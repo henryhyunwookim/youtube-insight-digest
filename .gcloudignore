@@ -1,0 +1,20 @@
+# Default ignored directories & files
+.git/
+.gitignore
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+env/
+venv/
+ENV/
+.pytest_cache/
+tests/
+digest_preview.html
+
+# Explicitly include these essential files
+!credentials.json
+!.env
+!token.json
+!channels.json
