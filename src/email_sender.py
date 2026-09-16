@@ -84,116 +84,98 @@ class EmailSender:
                 moments = summary.get("notable_moments", [])
                 tags = summary.get("tags", [])
 
-                # Executive summary bullets
-                exec_html = "".join([f"<li style='margin-bottom: 6px; color: #334155;'>{b}</li>" for b in exec_bullets])
+                # Consolidate bullets for high-density reading (prioritize insights, fallback to exec bullets)
+                display_bullets = insights if insights else exec_bullets
+                display_bullets = display_bullets[:3]
+                bullets_html = "".join([f"<li style='margin-bottom: 5px; color: #334155; line-height: 1.5;'>{b}</li>" for b in display_bullets])
 
-                # Strategic insights
-                insights_html = "".join([
-                    f"<div style='margin-bottom: 8px; font-size: 13px; line-height: 1.5; color: #1e293b;'>"
-                    f"<span style='color: #4338ca; font-weight: 700;'>•</span> {ins}"
-                    f"</div>" for ins in insights
-                ])
-
-                # Actionable takeaways
-                takeaways_html = "".join([
-                    f"<div style='margin-bottom: 6px; font-size: 13px; line-height: 1.5; color: #15803d;'>"
-                    f"<strong>✓</strong> <span style='color: #1e293b;'>{t}</span>"
-                    f"</div>" for t in takeaways
-                ])
-
-                # Notable moments
-                moments_html = ""
-                if moments:
-                    moment_items = []
-                    for m in moments:
-                        ts = m.get("timestamp", "")
-                        note = m.get("note", "")
-                        moment_items.append(
-                            f"<div style='display: inline-block; margin-right: 8px; margin-bottom: 6px; background-color: #f1f5f9; padding: 3px 8px; border-radius: 6px; font-size: 12px; color: #334155;'>"
-                            f"<strong style='color: #2563eb;'>{ts}</strong> {note}"
-                            f"</div>"
-                        )
-                    moments_html = f"""
-                    <div style="margin-top: 14px; padding-top: 12px; border-top: 1px dashed #e2e8f0;">
-                        <span style="font-size: 11px; text-transform: uppercase; font-weight: 700; color: #64748b; letter-spacing: 0.05em; display: block; margin-bottom: 6px;">Key Moments & Highlights</span>
-                        {"".join(moment_items)}
+                # Actionable takeaway (crisp single highlight)
+                takeaway_html = ""
+                if takeaways:
+                    takeaway_html = f"""
+                    <div style="background-color: #f0fdf4; border: 1px solid #bbf7d0; border-left: 3px solid #16a34a; border-radius: 6px; padding: 8px 12px; margin-bottom: 14px; font-size: 13px; line-height: 1.45;">
+                        <strong style="color: #166534;">Takeaway:</strong> <span style="color: #1e293b;">{takeaways[0]}</span>
                     </div>
                     """
 
-                # Tags HTML
+                # Notable moment pill
+                moment_html = ""
+                if moments:
+                    m = moments[0]
+                    ts = m.get("timestamp", "")
+                    note = m.get("note", "")
+                    if ts or note:
+                        moment_html = f"""
+                        <div style="display: inline-block; background-color: #f1f5f9; border: 1px solid #e2e8f0; padding: 4px 9px; border-radius: 6px; font-size: 11.5px; color: #334155;">
+                            <strong style="color: #2563eb;">{ts}</strong> {note}
+                        </div>
+                        """
+
+                # Tags HTML (max 3 tags for clean header)
                 tags_html = " ".join([
                     f"<span style='background: #f1f5f9; color: #475569; padding: 2px 7px; border-radius: 4px; font-size: 11px; margin-right: 4px;'>#{t}</span>"
-                    for t in tags
+                    for t in tags[:3]
                 ])
 
                 video_cards_html += f"""
-                <div style="background-color: #ffffff; border-radius: 12px; border: 1px solid #e2e8f0; box-shadow: 0 2px 8px rgba(0,0,0,0.04); margin-bottom: 24px; overflow: hidden;">
+                <div style="background-color: #ffffff; border-radius: 12px; border: 1px solid #e2e8f0; box-shadow: 0 2px 6px rgba(0,0,0,0.03); margin-bottom: 20px; overflow: hidden;">
                     <!-- Card Header -->
-                    <div style="padding: 16px 20px 12px 20px; border-bottom: 1px solid #f1f5f9; display: flex; align-items: center; justify-content: space-between;">
+                    <div style="padding: 12px 18px; border-bottom: 1px solid #f1f5f9; display: flex; align-items: center; justify-content: space-between;">
                         <div>
-                            <span style="background-color: {badge_color}18; color: {badge_color}; border: 1px solid {badge_color}33; padding: 3px 10px; border-radius: 9999px; font-size: 11px; font-weight: 700; letter-spacing: 0.04em;">
+                            <span style="background-color: {badge_color}18; color: {badge_color}; border: 1px solid {badge_color}33; padding: 2px 9px; border-radius: 9999px; font-size: 11px; font-weight: 700; letter-spacing: 0.03em;">
                                 {channel_name}
                             </span>
-                            <span style="font-size: 12px; color: #94a3b8; margin-left: 8px;">{category}</span>
+                            <span style="font-size: 11.5px; color: #94a3b8; margin-left: 8px;">{category}</span>
                         </div>
-                        <span style="font-size: 12px; color: #94a3b8;">{pub_time}</span>
+                        <span style="font-size: 11.5px; color: #94a3b8;">{pub_time}</span>
                     </div>
 
                     <!-- Card Body -->
-                    <div style="padding: 20px;">
+                    <div style="padding: 16px 18px 18px 18px;">
                         <!-- Thumbnail & Title -->
-                        <table style="width: 100%; border-collapse: collapse; margin-bottom: 16px;">
+                        <table style="width: 100%; border-collapse: collapse; margin-bottom: 12px;">
                             <tr>
-                                <td style="width: 140px; vertical-align: top; padding-right: 16px;">
-                                    <a href="{url}" target="_blank" style="text-decoration: none; display: block; border-radius: 8px; overflow: hidden; position: relative; border: 1px solid #e2e8f0;">
-                                        <img src="{thumb_url}" alt="Thumbnail" style="width: 140px; height: 78px; object-fit: cover; display: block;" />
+                                <td style="width: 130px; vertical-align: top; padding-right: 14px;">
+                                    <a href="{url}" target="_blank" style="text-decoration: none; display: block; border-radius: 6px; overflow: hidden; border: 1px solid #e2e8f0;">
+                                        <img src="{thumb_url}" alt="Thumbnail" style="width: 130px; height: 73px; object-fit: cover; display: block;" />
                                     </a>
                                 </td>
                                 <td style="vertical-align: top;">
-                                    <h3 style="margin: 0 0 6px 0; font-size: 16px; line-height: 1.35; font-weight: 700; color: #0f172a; font-family: 'Plus Jakarta Sans', Arial, sans-serif;">
+                                    <h3 style="margin: 0 0 6px 0; font-size: 15.5px; line-height: 1.35; font-weight: 700; color: #0f172a; font-family: 'Plus Jakarta Sans', Arial, sans-serif;">
                                         <a href="{url}" target="_blank" style="color: #0f172a; text-decoration: none;">{title}</a>
                                     </h3>
-                                    <div style="margin-bottom: 4px;">{tags_html}</div>
+                                    <div>{tags_html}</div>
                                 </td>
                             </tr>
                         </table>
 
                         <!-- One-Line Hook -->
-                        {f'<div style="background-color: #f8fafc; border-left: 3px solid #3b82f6; padding: 10px 14px; border-radius: 0 8px 8px 0; margin-bottom: 16px; font-size: 13.5px; font-weight: 600; color: #1e293b; line-height: 1.5;">💡 {hook}</div>' if hook else ''}
+                        {f'<div style="background-color: #f8fafc; border-left: 3px solid #3b82f6; padding: 8px 12px; border-radius: 0 6px 6px 0; margin-bottom: 12px; font-size: 13px; font-weight: 600; color: #1e293b; line-height: 1.45;">💡 {hook}</div>' if hook else ''}
 
-                        <!-- Executive Summary -->
-                        <div style="margin-bottom: 16px;">
-                            <span style="font-size: 11px; text-transform: uppercase; font-weight: 700; color: #64748b; letter-spacing: 0.05em; display: block; margin-bottom: 6px;">Executive Summary</span>
-                            <ul style="margin: 0; padding-left: 18px; font-size: 13.5px; line-height: 1.6;">
-                                {exec_html}
+                        <!-- Essential Insights (Executive Summary & Strategic Intelligence) -->
+                        <div style="margin-bottom: 12px;">
+                            <span style="font-size: 11px; text-transform: uppercase; font-weight: 700; color: #4338ca; letter-spacing: 0.05em; display: block; margin-bottom: 6px;">Executive Summary & Strategic Intelligence</span>
+                            <ul style="margin: 0; padding-left: 18px; font-size: 13px; line-height: 1.55;">
+                                {bullets_html}
                             </ul>
                         </div>
 
-                        <!-- Strategic Insights Box -->
-                        {f'''
-                        <div style="background-color: #f5f3ff; border: 1px solid #ddd6fe; border-radius: 8px; padding: 12px 14px; margin-bottom: 14px;">
-                            <span style="font-size: 11px; text-transform: uppercase; font-weight: 700; color: #6b21a8; letter-spacing: 0.05em; display: block; margin-bottom: 6px;">Strategic Intelligence & Impact</span>
-                            {insights_html}
-                        </div>
-                        ''' if insights else ''}
+                        <!-- Actionable Takeaway -->
+                        {takeaway_html}
 
-                        <!-- Actionable Takeaways Box -->
-                        {f'''
-                        <div style="background-color: #f0fdf4; border: 1px solid #bbf7d0; border-radius: 8px; padding: 12px 14px; margin-bottom: 14px;">
-                            <span style="font-size: 11px; text-transform: uppercase; font-weight: 700; color: #166534; letter-spacing: 0.05em; display: block; margin-bottom: 6px;">Actionable Practitioner Takeaways</span>
-                            {takeaways_html}
-                        </div>
-                        ''' if takeaways else ''}
-
-                        <!-- Notable Moments -->
-                        {moments_html}
-
-                        <!-- Watch Button -->
-                        <div style="margin-top: 18px; text-align: right;">
-                            <a href="{url}" target="_blank" style="background-color: #0f172a; color: #ffffff; text-decoration: none; padding: 8px 18px; border-radius: 6px; font-size: 12.5px; font-weight: 600; display: inline-block;">
-                                ▶ Watch on YouTube
-                            </a>
-                        </div>
+                        <!-- Card Action Footer (Moment + Watch Button) -->
+                        <table style="width: 100%; border-collapse: collapse; margin-top: 10px; padding-top: 10px; border-top: 1px solid #f1f5f9;">
+                            <tr>
+                                <td style="vertical-align: middle; text-align: left;">
+                                    {moment_html}
+                                </td>
+                                <td style="vertical-align: middle; text-align: right;">
+                                    <a href="{url}" target="_blank" style="background-color: #0f172a; color: #ffffff; text-decoration: none; padding: 6px 14px; border-radius: 6px; font-size: 12px; font-weight: 600; display: inline-block;">
+                                        ▶ Watch on YouTube
+                                    </a>
+                                </td>
+                            </tr>
+                        </table>
                     </div>
                 </div>
                 """
@@ -307,18 +289,17 @@ class EmailSender:
             plain_text += f"Channel: {m.get('channel_name')} | Category: {m.get('category')}\n"
             plain_text += f"Title: {m.get('title')}\n"
             plain_text += f"Link: {m.get('url')}\n"
-            plain_text += f"Hook: {s.get('one_line_hook')}\n"
-            plain_text += "Executive Summary:\n"
-            for b in s.get("executive_summary", []):
+            if s.get("one_line_hook"):
+                plain_text += f"Hook: {s.get('one_line_hook')}\n"
+            plain_text += "Essential Insights:\n"
+            bullets = s.get("key_insights") or s.get("executive_summary", [])
+            for b in bullets[:3]:
                 plain_text += f"  * {b}\n"
-            if s.get("key_insights"):
-                plain_text += "Strategic Insights:\n"
-                for ins in s.get("key_insights", []):
-                    plain_text += f"  - {ins}\n"
             if s.get("actionable_takeaways"):
-                plain_text += "Actionable Takeaways:\n"
-                for t in s.get("actionable_takeaways", []):
-                    plain_text += f"  [x] {t}\n"
+                plain_text += f"Takeaway: {s.get('actionable_takeaways')[0]}\n"
+            if s.get("notable_moments"):
+                m_info = s.get("notable_moments")[0]
+                plain_text += f"Key Moment: {m_info.get('timestamp', '')} {m_info.get('note', '')}\n"
             plain_text += "\n"
 
         plain_text += "\nSent automatically by YouTube Insight Digest."

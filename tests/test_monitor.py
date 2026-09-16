@@ -69,6 +69,13 @@ class TestYouTubeInsightDigest(unittest.TestCase):
         self.assertIn("Executive Summary", html)
         self.assertIn("Strategic Intelligence", html)
 
+    def test_summarizer_model_configuration(self):
+        from src.summarizer import VideoSummarizer
+        from src.config import GEMINI_MODEL
+        summarizer = VideoSummarizer(api_key="mock_key", model_name="gemini-3.8-flash")
+        self.assertEqual(summarizer.model_name, "gemini-3.8-flash")
+        self.assertEqual(GEMINI_MODEL, "gemini-3.8-flash")
+
 
 if __name__ == "__main__":
     unittest.main()

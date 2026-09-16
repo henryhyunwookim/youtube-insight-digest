@@ -14,7 +14,7 @@ import time
 from typing import Any
 import google.generativeai as genai
 
-from src.config import GEMINI_API_KEY
+from src.config import GEMINI_API_KEY, GEMINI_MODEL
 
 
 class VideoSummarizer:
@@ -22,7 +22,7 @@ class VideoSummarizer:
     Coordinates Gemini LLM synthesis and insight generation for YouTube videos.
     """
 
-    def __init__(self, api_key: str | None = None) -> None:
+    def __init__(self, api_key: str | None = None, model_name: str | None = None) -> None:
         self.api_key: str | None = api_key or GEMINI_API_KEY
         if not self.api_key:
             raise ValueError(
@@ -30,10 +30,11 @@ class VideoSummarizer:
                 "or pass it to VideoSummarizer(api_key=...)."
             )
 
+        self.model_name: str = model_name or GEMINI_MODEL
         genai.configure(api_key=self.api_key)
-        # Using gemini-2.5-flash for rapid speed, deep reasoning, and structured JSON output
+        # Using cutting-edge Flash model (default: gemini-3.8-flash) for rapid speed, deep reasoning, and structured JSON output
         self.model = genai.GenerativeModel(
-            "gemini-2.5-flash",
+            self.model_name,
             generation_config={"response_mime_type": "application/json"}
         )
 
@@ -66,7 +67,7 @@ class VideoSummarizer:
 
         prompt = f"""You are a distinguished Principal AI Architect and Technology Intelligence Analyst.
 Analyze the following YouTube video released by '{author}' in the '{category}' domain.
-Synthesize its contents into an authoritative, dense, high-signal briefing for an executive technical audience.
+Synthesize its contents into a razor-sharp, dense, high-signal intelligence briefing for an executive technical audience.
 
 ### Video Information:
 - **Title**: {title}
@@ -78,22 +79,22 @@ Synthesize its contents into an authoritative, dense, high-signal briefing for a
 ### Source Material:
 {content_body}
 
-### Analysis Requirements:
-1. **One-Line Hook (`one_line_hook`)**: A razor-sharp, captivating 1-sentence synthesis capturing the primary breakthrough, announcement, or thesis.
-2. **Executive Summary (`executive_summary`)**: 3 to 5 dense bullet points summarizing what was presented, key architecture/models/tools involved, and primary findings.
-3. **Strategic Insights (`key_insights`)**: 2 to 4 deep analytical perspectives on "Why this matters," architectural tradeoffs, developer ecosystem impact, or industry implications.
-4. **Actionable Takeaways (`actionable_takeaways`)**: 2 to 3 concrete engineering or operational action items for AI practitioners.
-5. **Notable Moments (`notable_moments`)**: 1 to 3 pivotal quotes or timestamped milestones (format: timestamp + why it is notable). If timestamps are unavailable, provide the quote or topic.
-6. **Topics & Tags (`tags`)**: 3 to 5 relevant technical tags (e.g., ["LangGraph", "Multi-Agent", "Evaluation"]).
+### Analysis Requirements (STRICT BREVITY & DENSITY):
+CRITICAL: The reader has only 30-45 seconds per video. Eliminate all filler phrases, background fluff, and obvious generic commentary. Prioritize concrete numbers, architectural patterns, benchmarks, and real-world results.
+
+1. **One-Line Hook (`one_line_hook`)**: A single, punchy sentence capturing the primary breakthrough, architecture shift, or metric (max 25 words).
+2. **Essential Insights (`key_insights`)**: Exactly 2 to 3 ultra-concise bullets (max 25 words each). Highlight hard data, core architectural decisions, or performance gains.
+3. **Actionable Takeaway (`actionable_takeaways`)**: Exactly 1 pragmatic, direct engineering action item or decision rule (max 25 words, e.g., "Adopt X when Y to avoid Z").
+4. **Key Moment (`notable_moments`)**: Maximum 1 pivotal timestamped milestone (format: [MM:SS] with brief context). If none is standout, provide an empty list [].
+5. **Topics & Tags (`tags`)**: 2 to 4 specific technical tags (e.g., ["LangGraph", "Multi-Agent", "Benchmarking"]).
 
 Respond with ONLY a valid JSON object matching this schema:
 {{
   "one_line_hook": "string",
-  "executive_summary": ["bullet 1", "bullet 2", "bullet 3"],
-  "key_insights": ["insight 1", "insight 2"],
-  "actionable_takeaways": ["takeaway 1", "takeaway 2"],
+  "key_insights": ["bullet 1", "bullet 2"],
+  "actionable_takeaways": ["takeaway 1"],
   "notable_moments": [
-    {{"timestamp": "[MM:SS]", "note": "description or key quote"}}
+    {{"timestamp": "[MM:SS]", "note": "brief context"}}
   ],
   "tags": ["tag1", "tag2", "tag3"]
 }}
@@ -111,14 +112,19 @@ Respond with ONLY a valid JSON object matching this schema:
 
                 result = json.loads(clean_json)
 
-                # Ensure required fields exist
+                # Prioritize key_insights; maintain backward-compatible executive_summary fallback
+                key_insights = result.get("key_insights") or result.get("executive_summary", [])
+                actionable_takeaways = result.get("actionable_takeaways", [])
+                notable_moments = result.get("notable_moments", [])
+                tags = result.get("tags", [])
+
                 return {
                     "one_line_hook": result.get("one_line_hook", title),
-                    "executive_summary": result.get("executive_summary", []),
-                    "key_insights": result.get("key_insights", []),
-                    "actionable_takeaways": result.get("actionable_takeaways", []),
-                    "notable_moments": result.get("notable_moments", []),
-                    "tags": result.get("tags", []),
+                    "executive_summary": key_insights[:3],
+                    "key_insights": key_insights[:3],
+                    "actionable_takeaways": actionable_takeaways[:1],
+                    "notable_moments": notable_moments[:1],
+                    "tags": tags[:4],
                     "has_transcript": has_transcript,
                     "content_source": content_source
                 }
@@ -129,11 +135,12 @@ Respond with ONLY a valid JSON object matching this schema:
                     time.sleep(2 * attempt)
                 else:
                     # Graceful fallback if LLM synthesis errors out
+                    fallback_text = (description[:160] + "...") if len(description) > 160 else (description or "Summary unavailable.")
                     return {
                         "one_line_hook": title,
-                        "executive_summary": [description[:300] if description else "Summary unavailable."],
-                        "key_insights": ["Automated AI synthesis temporarily unavailable."],
-                        "actionable_takeaways": [f"Watch the full video at {video_metadata.get('url')}"],
+                        "executive_summary": [fallback_text],
+                        "key_insights": [fallback_text],
+                        "actionable_takeaways": [f"Watch on YouTube: {video_metadata.get('url')}"],
                         "notable_moments": [],
                         "tags": [category],
                         "has_transcript": has_transcript,

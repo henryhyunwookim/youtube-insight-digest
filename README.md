@@ -1,7 +1,7 @@
 # YouTube Insight Digest 📺🤖📬
 
 [![Python 3.11+](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org/downloads/)
-[![AI Model: Gemini 2.5 Flash](https://img.shields.io/badge/LLM-Gemini%202.5%20Flash-orange.svg)](https://ai.google.dev/)
+[![AI Model: Gemini 3.8 Flash](https://img.shields.io/badge/LLM-Gemini%203.8%20Flash-orange.svg)](https://ai.google.dev/)
 [![Gmail API OAuth 2.0](https://img.shields.io/badge/Gmail-OAuth%202.0-red.svg)](https://developers.google.com/gmail/api)
 [![Cloud Ready](https://img.shields.io/badge/Google%20Cloud-Run%20%26%20Scheduler-4285F4.svg)](https://cloud.google.com/run)
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
@@ -79,10 +79,10 @@ flowchart LR
         FETCH_TR -- "Unavailable / Disabled" --> FALLBACK_DESC["Fallback to Video<br/>Description Metadata"]
     end
 
-    subgraph S2 ["2. Gemini 2.5 Flash Synthesis"]
+    subgraph S2 ["2. Gemini 3.8 Flash Synthesis"]
         PARSE_TS --> PROMPT_BUILD["Inject Persona & Schema<br/>(Principal AI Architect)"]
         FALLBACK_DESC --> PROMPT_BUILD
-        PROMPT_BUILD --> GEMINI_CALL["Gemini 2.5 Flash<br/>(application/json)"]
+        PROMPT_BUILD --> GEMINI_CALL["Gemini 3.8 Flash<br/>(application/json)"]
         GEMINI_CALL --> JSON_PARSE{"Parse Structured JSON"}
         JSON_PARSE -- "Valid JSON" --> BRIEFING["Structured Intelligence<br/>• One-Line Hook<br/>• Executive Summary<br/>• Strategic Insights<br/>• Actionable Takeaways<br/>• Key Moments<br/>• Topics & Tags"]
         JSON_PARSE -- "Error / Exhausted" --> RETRY_FALLBACK["Fallback Synthesis<br/>(Safe degraded briefing)"]
@@ -241,21 +241,170 @@ Register a daily scheduled task using the provided [`run_digest.bat`](file:///c:
 0 3 * * * cd /path/to/youtube-insight-digest && python -m src.main >> /var/log/youtube_digest.log 2>&1
 ```
 
-### Method C: Google Cloud Run & Cloud Scheduler
-Deploy the containerized service and configure a daily Cloud Scheduler trigger:
+### Method C: Google Cloud Run & Cloud Scheduler (Automated Serverless Architecture)
 
-1. Review and execute [`deployment/deploy_cloud.ps1`](file:///c:/Users/hyunwookim/OneDrive%20-%20GAFS/%E3%83%89%E3%82%AD%E3%83%A5%E3%83%A1%E3%83%B3%E3%83%88/GitHub/youtube-insight-digest/deployment/deploy_cloud.ps1):
-   ```powershell
-   .\deployment\deploy_cloud.ps1 -ProjectId "YOUR_GCP_PROJECT_ID" -Region "asia-northeast1"
+Deploy the system as an automated, serverless microservice on **Google Cloud Run** triggered daily at **12:00 PM JST** by **Cloud Scheduler** over authenticated HTTPS.
+
+#### 1. Serverless Architecture & Invocation Lifecycle
+
+```mermaid
+flowchart LR
+    SCHED["Google Cloud Scheduler<br/>(0 12 * * * Asia/Tokyo)"] -- "1. POST / (OIDC Auth)" --> IAM["IAM Invoker Verification<br/>(youtube-scheduler-sa)"]
+    IAM -- "2. Authenticated Request" --> RUN["Cloud Run Service<br/>(Gunicorn + Flask :8080)"]
+    RUN -- "3. Scans Feeds & Captions" --> YT["YouTube RSS & Transcripts"]
+    RUN -- "4. Generates Briefing" --> GEMINI["Google Gemini 3.8 Flash"]
+    RUN -- "5. Dispatches Digest" --> GMAIL["Gmail API (OAuth 2.0)"]
+    GMAIL -- "6. HTML Email" --> INBOX["Recipient Inbox"]
+```
+
+#### 2. Prerequisites for Cloud Deployment
+
+1. **Google Cloud SDK (`gcloud`)**:
+   Ensure `gcloud` is installed and authenticated:
+   ```bash
+   gcloud auth login
+   gcloud auth application-default login
    ```
-2. The deployment script automatically:
-   - Builds and deploys the container via Cloud Build and Cloud Run (`src/app.py` on port 8080).
-   - Configures a dedicated IAM Service Account (`youtube-scheduler-sa`) with `roles/run.invoker`.
-   - Schedules a Cloud Scheduler job triggering `POST /` at `0 12 * * *` with timezone `Asia/Tokyo`.
+2. **GCP Project with Billing Enabled**:
+   Identify your Project ID (e.g. `gen-lang-client-0480639565` or create a new project).
+3. **Pre-Authorized OAuth Tokens (Crucial)**:
+   Because Cloud Run executes headless without an interactive GUI browser, you **must complete local Gmail authorization at least once** on your machine prior to deployment:
+   ```bash
+   py -3.11 -m src.main --auth
+   ```
+   This generates [`token.json`](file:///c:/Users/hyunwookim/OneDrive%20-%20GAFS/%E3%83%89%E3%82%AD%E3%83%A5%E3%83%A1%E3%83%B3%E3%83%88/GitHub/youtube-insight-digest/token.json) containing refresh tokens that will automatically package into the Cloud Run container image (explicitly allowed by [`.gcloudignore`](file:///c:/Users/hyunwookim/OneDrive%20-%20GAFS/%E3%83%89%E3%82%AD%E3%83%A5%E3%83%A1%E3%83%B3%E3%83%88/GitHub/youtube-insight-digest/.gcloudignore)).
+4. **Environment Variables**:
+   Ensure your `.env` contains your Gemini API key, recipient email, and Cloud target settings:
+   ```bash
+   GEMINI_API_KEY=your_gemini_api_key
+   RECIPIENT_EMAIL=your_email@example.com
+   GCP_PROJECT_ID=your_gcp_project_id
+   GCP_REGION=asia-northeast1 # or us-central1
+   ```
+
+---
+
+#### 3. Option A: One-Click Automated Deployment (PowerShell)
+
+Execute the automated deployment script [`deployment/deploy_cloud.ps1`](file:///c:/Users/hyunwookim/OneDrive%20-%20GAFS/%E3%83%89%E3%82%AD%E3%83%A5%E3%83%A1%E3%83%B3%E3%83%88/GitHub/youtube-insight-digest/deployment/deploy_cloud.ps1):
+
+```powershell
+# Deploy using settings from .env (or defaults):
+.\deployment\deploy_cloud.ps1
+
+# Or explicitly customize target project, region, and cron schedule:
+.\deployment\deploy_cloud.ps1 -ProjectId "YOUR_GCP_PROJECT_ID" -Region "asia-northeast1" -Schedule "0 12 * * *" -TimeZone "Asia/Tokyo"
+```
+
+##### Automated Steps Executed by `deploy_cloud.ps1`:
+1. **Target Config**: Sets the active `gcloud` project and default region (`gcloud config set`).
+2. **API Enablement**: Activates `run.googleapis.com`, `cloudbuild.googleapis.com`, `artifactregistry.googleapis.com`, and `cloudscheduler.googleapis.com`.
+3. **Container Build & Deploy**: Uses Cloud Build to package the workspace and deploys to Cloud Run with `--no-allow-unauthenticated`, `1Gi` memory, and a `300s` timeout.
+4. **IAM Security Provisioning**: Creates a dedicated service account (`youtube-scheduler-sa`) and binds the `roles/run.invoker` role to restrict access.
+5. **Scheduler Setup**: Provisions or updates a Cloud Scheduler HTTP job pointing to the Cloud Run service URL with OIDC service account authentication.
+
+---
+
+#### 4. Option B: Step-by-Step Manual Deployment (`gcloud` CLI)
+
+For Linux/macOS environments or users who prefer running individual `gcloud` CLI commands:
+
+```bash
+# 1. Set environment variables
+export PROJECT_ID="your_project_id"
+export REGION="asia-northeast1"
+export SERVICE_NAME="youtube-insight-digest"
+export SA_NAME="youtube-scheduler-sa"
+export SA_EMAIL="${SA_NAME}@${PROJECT_ID}.iam.gserviceaccount.com"
+
+gcloud config set project $PROJECT_ID
+gcloud config set run/region $REGION
+
+# 2. Enable Google Cloud APIs
+gcloud services enable \
+    run.googleapis.com \
+    cloudbuild.googleapis.com \
+    artifactregistry.googleapis.com \
+    cloudscheduler.googleapis.com
+
+# 3. Build & Deploy Container from Source
+gcloud run deploy $SERVICE_NAME \
+    --source . \
+    --region $REGION \
+    --no-allow-unauthenticated \
+    --timeout 300 \
+    --memory 1Gi
+
+# 4. Retrieve Service URL
+SERVICE_URL=$(gcloud run services describe $SERVICE_NAME --region $REGION --format "value(status.url)")
+
+# 5. Create Dedicated Scheduler Service Account & Grant Invoker Role
+gcloud iam service-accounts create $SA_NAME --display-name "YouTube Digest Scheduler Invoker"
+
+gcloud run services add-iam-policy-binding $SERVICE_NAME \
+    --region $REGION \
+    --member="serviceAccount:$SA_EMAIL" \
+    --role="roles/run.invoker"
+
+# 6. Create Cloud Scheduler Job (Daily at 12:00 PM JST)
+gcloud scheduler jobs create http youtube-insight-daily-trigger \
+    --location $REGION \
+    --schedule "0 12 * * *" \
+    --time-zone "Asia/Tokyo" \
+    --uri "$SERVICE_URL/" \
+    --http-method POST \
+    --oidc-service-account-email "$SA_EMAIL" \
+    --oidc-token-audience "$SERVICE_URL"
+```
+
+---
+
+#### 5. Verification & Testing
+
+##### A. Test Webhook Invocations via CLI (with OIDC Identity Token)
+Because `--no-allow-unauthenticated` is enforced, direct HTTP requests must present an identity token:
+
+```bash
+# Windows PowerShell
+$url = (gcloud run services describe youtube-insight-digest --region asia-northeast1 --format "value(status.url)").Trim()
+$token = (gcloud auth print-identity-token).Trim()
+Invoke-RestMethod -Method Post -Uri "$url/?dry_run=true" -Headers @{ Authorization = "Bearer $token" }
+
+# Linux / macOS Bash
+curl -X POST -H "Authorization: Bearer $(gcloud auth print-identity-token)" \
+    "$(gcloud run services describe youtube-insight-digest --region asia-northeast1 --format 'value(status.url)')/?dry_run=true"
+```
+
+##### B. Manually Trigger Cloud Scheduler Job
+Trigger an immediate execution from Cloud Scheduler to test the full end-to-end flow without waiting for 12:00 PM JST:
+
+```bash
+gcloud scheduler jobs run youtube-insight-daily-trigger --location asia-northeast1
+```
+
+##### C. Inspect Cloud Run Logs
+Monitor live logs or stream container output during processing:
+
+```bash
+# View recent log entries
+gcloud logging read "resource.type=cloud_run_revision AND resource.labels.service_name=youtube-insight-digest" --limit 50
+
+# Live stream container logs in real-time
+gcloud beta run services logs tail youtube-insight-digest --region asia-northeast1
+```
+
+---
+
+#### 6. Production Operational Considerations
+
+- **Container Timeout (300s)**: Scraping transcripts and executing Gemini 3.8 Flash synthesis for multiple videos can take 60–180 seconds. The service timeout is configured to 300 seconds to prevent premature cancellation.
+- **Stateless Nature & State Tracking**: Cloud Run containers are ephemeral. The system's `DEFAULT_LOOKBACK_HOURS=24` window coupled with the 24-hour Cloud Scheduler interval ensures fresh uploads are captured while older videos are ignored.
+- **Zero Idle Costs**: Cloud Run automatically scales down to **zero instances** when idle, keeping operations completely within Google Cloud's monthly free tier allowance.
 
 ---
 
 ## 🛡️ Security & Privacy Hygiene
 
-- **Strict Secret Exclusion**: [`.gitignore`](file:///c:/Users/hyunwookim/OneDrive%20-%20GAFS/%E3%83%89%E3%82%AD%E3%83%A5%E3%83%A1%E3%83%B3%E3%83%88/GitHub/youtube-insight-digest/.gitignore) strictly excludes `.env`, `credentials.json`, `token.json`, `state.json`, and `digest_preview.html`.
+- **Strict Secret Exclusion**: [`.gitignore`](file:///c:/Users/hyunwookim/OneDrive%20-%20GAFS/%E3%83%89%E3%82%AD%E3%83%A5%E3%83%A1%E3%83%B3%E3%83%88/GitHub/youtube-insight-digest/.gitignore) strictly excludes `.env`, `credentials.json`, `token.json`, `state.json`, and `digest_preview.html` from Git repositories.
+- **Controlled Container Ingress**: The Cloud Run service enforces `--no-allow-unauthenticated` and requires OIDC tokens with the specific `roles/run.invoker` IAM permission to prevent unauthorized triggers.
 - **Zero Accidental Leaks**: OAuth tokens and API keys remain strictly local to your workstation or secure secret store.

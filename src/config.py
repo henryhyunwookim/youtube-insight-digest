@@ -19,9 +19,10 @@ BASE_DIR: Path = Path(__file__).resolve().parent.parent
 load_dotenv(dotenv_path=BASE_DIR / ".env")
 
 # ===========================================================================
-# 1. Large Language Model (Gemini) API Key
+# 1. Large Language Model (Gemini) Configuration
 # ===========================================================================
 GEMINI_API_KEY: str | None = os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_API_KEY")
+GEMINI_MODEL: str = os.getenv("GEMINI_MODEL", "gemini-3.8-flash")
 
 # ===========================================================================
 # 2. Email Delivery & OAuth Scopes
