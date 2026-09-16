@@ -10,6 +10,39 @@ An automated intelligence system that monitors premier YouTube technical channel
 
 ---
 
+## 📬 Sample Email Digest Preview
+
+Here is an example of the high-signal executive briefing delivered directly to your inbox every day at 12:00 PM JST:
+
+<p align="center">
+  <img src="docs/images/digest_preview.jpg" alt="YouTube Insight Digest Preview" width="640" style="border-radius: 12px; box-shadow: 0 8px 30px rgba(0,0,0,0.12);" />
+</p>
+
+<details open>
+<summary><b>🔍 View Rendered Briefing Card Structure</b></summary>
+
+<br/>
+
+> ### 🟢 LangChain &bull; *LLM Agents & Frameworks*
+> **[How Lyft Increased Its Agent Resolution Rate by 16% with LangSmith and LangGraph](https://www.youtube.com/watch?v=M9BMTC8o9-w)**
+>
+> `💡 One-Line Hook`
+> **Lyft increased customer resolution rates by 16% and slashed agent deployment from six months to two weeks using LangGraph and LangSmith.**
+>
+> **Executive Summary & Strategic Intelligence:**
+> - Replaced brittle monolithic prompts with a dynamic meta-agent architecture registering domain-specific sub-agents as LangGraph nodes.
+> - Decoupled prompt management via LangSmith Prompt Hub, enabling PMs and ops to ship production agents through simple config updates.
+> - Integrated LangSmith tracing across 200k–300k daily queries to pinpoint tool-call failures and hallucinations in multi-turn customer support interactions.
+>
+> > **Actionable Takeaway:**
+> > Decouple agent workflows into config-driven LangGraph nodes and centralized prompt hubs to empower domain experts and accelerate deployment cycles.
+>
+> **Key Moment:** `[04:15]` Architecture migration breakdown &bull; `Tags:` `#LangGraph` `#MultiAgent` `#LangSmith`
+
+</details>
+
+---
+
 ## 🌟 Key Highlights
 
 - **Quota-Free & High Reliability**: Monitors channels via public RSS feeds (`feedparser`) and resolves `@handles` dynamically. Zero YouTube Data API quota consumption.
