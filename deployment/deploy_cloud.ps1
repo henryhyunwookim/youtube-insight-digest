@@ -84,19 +84,22 @@ if (-not (Get-Command gcloud -ErrorAction SilentlyContinue)) {
     exit 1
 }
 
-# Step 1: Set active project
-Write-Host "[Step 1/5] Setting active project to $PROJECT_ID..." -ForegroundColor Cyan
+# Step 1: Set active project and default region
+Write-Host "[Step 1/5] Setting active project to $PROJECT_ID and region to $REGION..." -ForegroundColor Cyan
 gcloud config set project $PROJECT_ID
+gcloud config set run/region $REGION
 
 # Step 2: Enable required GCP services
 Write-Host "[Step 2/5] Enabling required APIs (Cloud Run, Cloud Build, Artifact Registry, Cloud Scheduler)..." -ForegroundColor Cyan
 gcloud services enable run.googleapis.com cloudbuild.googleapis.com artifactregistry.googleapis.com cloudscheduler.googleapis.com
 
 # Step 3: Deploy container from source to Cloud Run
-$workspaceRoot = (Resolve-Path (Join-Path $PSScriptRoot "..\")).Path
-Write-Host "[Step 3/5] Deploying container from source ($workspaceRoot) to Cloud Run..." -ForegroundColor Cyan
+$repoRoot = (Resolve-Path (Join-Path $PSScriptRoot "..\")).Path
+Set-Location $repoRoot
+
+Write-Host "[Step 3/5] Deploying container from source (.) to Cloud Run..." -ForegroundColor Cyan
 gcloud run deploy $SERVICE_NAME `
-    --source $workspaceRoot `
+    --source . `
     --region $REGION `
     --no-allow-unauthenticated `
     --timeout 300 `
@@ -104,7 +107,7 @@ gcloud run deploy $SERVICE_NAME `
     --quiet
 
 # Retrieve the assigned service URL
-$SERVICE_URL = gcloud run services describe $SERVICE_NAME --region $REGION --format 'value(status.url)'
+$SERVICE_URL = (& gcloud run services describe $SERVICE_NAME --region $REGION --format "value(status.url)").Trim()
 if (-not $SERVICE_URL) {
     Write-Error "Failed to retrieve the deployed service URL for $SERVICE_NAME."
     exit 1
@@ -116,8 +119,7 @@ $SA_NAME = "youtube-scheduler-sa"
 $SA_EMAIL = "$SA_NAME@$PROJECT_ID.iam.gserviceaccount.com"
 
 Write-Host "[Step 4/5] Setting up Service Account ($SA_EMAIL) for Cloud Scheduler..." -ForegroundColor Cyan
-$existingSa = gcloud iam service-accounts list --filter="email:$SA_EMAIL" --format="value(email)"
-if (-not $existingSa) {
+if (-not (gcloud iam service-accounts list --filter="email:$SA_EMAIL" --format="value(email)")) {
     Write-Host "Creating service account: $SA_NAME..."
     gcloud iam service-accounts create $SA_NAME --display-name "YouTube Insight Digest Scheduler Invoker"
 } else {
@@ -126,33 +128,45 @@ if (-not $existingSa) {
 
 # Grant run.invoker role on Cloud Run service to Service Account
 Write-Host "Granting roles/run.invoker to $SA_EMAIL..."
-gcloud run services add-iam-policy-binding $SERVICE_NAME `
-    --region $REGION `
-    --member="serviceAccount:$SA_EMAIL" `
-    --role="roles/run.invoker"
+$iamArgs = @(
+    "run", "services", "add-iam-policy-binding", $SERVICE_NAME,
+    "--region", $REGION,
+    "--member=serviceAccount:$SA_EMAIL",
+    "--role=roles/run.invoker",
+    "--quiet"
+)
+& gcloud @iamArgs
 
 # Step 5: Configure Cloud Scheduler recurring HTTP trigger
 Write-Host "[Step 5/5] Configuring Cloud Scheduler recurring trigger at 12:00 PM JST..." -ForegroundColor Cyan
-$existingJob = gcloud scheduler jobs list --location=$REGION --filter="name:projects/$PROJECT_ID/locations/$REGION/jobs/$JOB_NAME" --format="value(name)"
+$audience = $SERVICE_URL.TrimEnd('/')
 
-if ($existingJob) {
+if (gcloud scheduler jobs list --location=$REGION --filter="name:projects/$PROJECT_ID/locations/$REGION/jobs/$JOB_NAME" --format="value(name)") {
     Write-Host "Updating existing Cloud Scheduler job ($JOB_NAME)..."
-    gcloud scheduler jobs update http $JOB_NAME `
-        --location=$REGION `
-        --schedule="$SCHEDULE" `
-        --time-zone=$TIMEZONE `
-        --uri=$SERVICE_URL `
-        --http-method=POST `
-        --oidc-service-account-email=$SA_EMAIL
+    $schedArgs = @(
+        "scheduler", "jobs", "update", "http", $JOB_NAME,
+        "--location", $REGION,
+        "--schedule", $SCHEDULE,
+        "--time-zone", $TIMEZONE,
+        "--uri", $SERVICE_URL,
+        "--http-method", "POST",
+        "--oidc-service-account-email", $SA_EMAIL,
+        "--oidc-token-audience", $audience
+    )
+    & gcloud @schedArgs
 } else {
     Write-Host "Creating new Cloud Scheduler job ($JOB_NAME)..."
-    gcloud scheduler jobs create http $JOB_NAME `
-        --location=$REGION `
-        --schedule="$SCHEDULE" `
-        --time-zone=$TIMEZONE `
-        --uri=$SERVICE_URL `
-        --http-method=POST `
-        --oidc-service-account-email=$SA_EMAIL
+    $schedArgs = @(
+        "scheduler", "jobs", "create", "http", $JOB_NAME,
+        "--location", $REGION,
+        "--schedule", $SCHEDULE,
+        "--time-zone", $TIMEZONE,
+        "--uri", $SERVICE_URL,
+        "--http-method", "POST",
+        "--oidc-service-account-email", $SA_EMAIL,
+        "--oidc-token-audience", $audience
+    )
+    & gcloud @schedArgs
 }
 
 Write-Host ""

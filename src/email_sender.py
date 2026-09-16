@@ -36,10 +36,21 @@ class EmailSender:
         digests: list[dict[str, Any]],
         date_str: str,
         monitored_channels_count: int,
-        hours_back: int
+        hours_back: int,
+        channel_names: list[str] | None = None
     ) -> str:
         """
         Builds a responsive, modern HTML document for the YouTube intelligence digest email.
+
+        Args:
+            digests: List of synthesized video summaries with metadata and insights.
+            date_str: Formatted execution date and time string.
+            monitored_channels_count: Total number of channels monitored.
+            hours_back: Lookback window in hours.
+            channel_names: Optional list of channel names for the summary pills bar.
+
+        Returns:
+            str: Valid, fully styled HTML email body.
         """
         video_cards_html = ""
 
@@ -187,6 +198,9 @@ class EmailSender:
                 </div>
                 """
 
+        # Render dynamic channel names pill list
+        channels_display = ", ".join(channel_names) if channel_names else "AI Engineer, LangChain, SuperDataScience, AWS Developers"
+
         # Complete Email Template
         html = f"""<!DOCTYPE html>
 <html lang="en">
@@ -231,7 +245,7 @@ class EmailSender:
         <!-- Monitored Channels Pills Bar -->
         <div style="background-color: #ffffff; border-radius: 10px; border: 1px solid #e2e8f0; padding: 10px 16px; margin-bottom: 20px; font-size: 12px; color: #64748b;">
             <strong style="color: #0f172a;">Monitored Channels:</strong>
-            AI Engineer, LangChain, SuperDataScience, AWS Developers
+            {channels_display}
         </div>
 
         <!-- Digest Cards -->
@@ -253,10 +267,21 @@ class EmailSender:
         digests: list[dict[str, Any]],
         date_str: str,
         monitored_channels_count: int,
-        hours_back: int
+        hours_back: int,
+        channel_names: list[str] | None = None
     ) -> dict[str, Any]:
         """
         Builds and dispatches the daily YouTube intelligence digest email via Gmail API.
+
+        Args:
+            digests: List of synthesized video summaries with metadata and insights.
+            date_str: Formatted execution date and time string.
+            monitored_channels_count: Total number of channels monitored.
+            hours_back: Lookback window in hours.
+            channel_names: Optional list of channel names for display in the digest.
+
+        Returns:
+            dict[str, Any]: Sent message metadata dictionary from the Gmail API.
         """
         if not RECIPIENT_EMAIL:
             raise ValueError(
@@ -264,7 +289,7 @@ class EmailSender:
                 "Please configure RECIPIENT_EMAIL in your .env file."
             )
 
-        html_body = self.build_html_digest(digests, date_str, monitored_channels_count, hours_back)
+        html_body = self.build_html_digest(digests, date_str, monitored_channels_count, hours_back, channel_names=channel_names)
 
         message = MIMEMultipart("alternative")
         count_tag = f"[{len(digests)} New Videos]" if digests else "[No New Videos]"

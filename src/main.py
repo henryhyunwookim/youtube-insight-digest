@@ -141,15 +141,29 @@ def run_pipeline(
 
         # Step 5: Email delivery or HTML preview generation
         print("[Step 4/4] Finalizing digest delivery...")
+        channel_names = [c.get("name", "") for c in channels if c.get("name")]
+
         if dry_run:
             # Generate preview HTML file
             sender = email_sender or EmailSender(creds=None) if (BASE_DIR / "credentials.json").exists() else None
             if sender:
-                html_content = sender.build_html_digest(digests, date_str, len(channels), hours_back)
+                html_content = sender.build_html_digest(
+                    digests,
+                    date_str,
+                    len(channels),
+                    hours_back,
+                    channel_names=channel_names
+                )
             else:
                 # Fallback template rendering without auth
                 dummy_sender = EmailSender.__new__(EmailSender)
-                html_content = dummy_sender.build_html_digest(digests, date_str, len(channels), hours_back)
+                html_content = dummy_sender.build_html_digest(
+                    digests,
+                    date_str,
+                    len(channels),
+                    hours_back,
+                    channel_names=channel_names
+                )
 
             preview_path = BASE_DIR / "digest_preview.html"
             with open(preview_path, "w", encoding="utf-8") as pf:
@@ -164,7 +178,8 @@ def run_pipeline(
                     digests=digests,
                     date_str=date_str,
                     monitored_channels_count=len(channels),
-                    hours_back=hours_back
+                    hours_back=hours_back,
+                    channel_names=channel_names
                 )
                 stats["email_sent"] = True
 
