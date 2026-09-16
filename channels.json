@@ -1,0 +1,42 @@
+[
+  {
+    "id": "ai-engineer",
+    "name": "AI Engineer",
+    "handle": "@aiDotEngineer",
+    "channel_id": "UCLKPca3kwwd-B59HNr-_lvA",
+    "url": "https://www.youtube.com/@aiDotEngineer",
+    "category": "AI Engineering & Architecture",
+    "badge_color": "#6366f1",
+    "enabled": true
+  },
+  {
+    "id": "langchain",
+    "name": "LangChain",
+    "handle": "@LangChain",
+    "channel_id": "UCC-lyoTfSrcJzA1ab3APAgw",
+    "url": "https://www.youtube.com/@LangChain",
+    "category": "LLM Agents & Frameworks",
+    "badge_color": "#10b981",
+    "enabled": true
+  },
+  {
+    "id": "superdatascience",
+    "name": "SuperDataScience",
+    "handle": "@sds-superdatascience",
+    "channel_id": "UC0WFn9iVCx3fCa31rqAvlXA",
+    "url": "https://www.youtube.com/@sds-superdatascience",
+    "category": "Data Science & Machine Learning",
+    "badge_color": "#f59e0b",
+    "enabled": true
+  },
+  {
+    "id": "aws-developers",
+    "name": "AWS Developers",
+    "handle": "@awsdevelopers",
+    "channel_id": "UCT-nPlVzJI-ccQXlxjSvJmw",
+    "url": "https://www.youtube.com/@awsdevelopers",
+    "category": "Cloud Infrastructure & GenAI",
+    "badge_color": "#ec4899",
+    "enabled": true
+  }
+]
