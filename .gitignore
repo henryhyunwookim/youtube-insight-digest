@@ -56,6 +56,13 @@ desktop.ini
 $RECYCLE.BIN/
 
 # Testing, type checking & logs
+tests/
+test/
+__tests__/
+*.test.*
+*.spec.*
+test_*.py
+*_test.py
 .pytest_cache/
 .mypy_cache/
 .ruff_cache/

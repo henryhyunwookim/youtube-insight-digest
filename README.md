@@ -45,7 +45,7 @@ Here is an example of the high-signal executive briefing delivered directly to y
 
 ## 🌟 Key Highlights
 
-- **Quota-Free & High Reliability**: Monitors channels via public RSS feeds (`feedparser`) and resolves `@handles` dynamically. Zero YouTube Data API quota consumption.
+- **Quota-Free & High Reliability**: Monitors channels via public RSS feeds (`feedparser`) with automatic web-scraping fallback (`ytInitialData`) when YouTube throttles feeds. Resolves `@handles` dynamically with zero YouTube Data API quota consumption.
 - **Deep Multilingual Transcripts**: Extracts manual or auto-generated video captions with timestamps via `youtube-transcript-api` across English, Japanese, Korean, and more.
 - **Gemini Intelligence Engine**: Generates high-signal briefings:
   - **One-Line Hook**: A razor-sharp 1-sentence synthesis of the core breakthrough or thesis.
@@ -79,8 +79,10 @@ flowchart TD
     AUTH_CHECK -- "Dry-Run" --> SCAN_CHANNELS["Scan Monitored Channels<br/>(youtube_monitor.py)"]
 
     SCAN_CHANNELS --> RESOLVE_ID["Resolve Channel ID<br/>(@handle to UC... ID)"]
-    RESOLVE_ID --> FETCH_RSS["Fetch YouTube RSS Feed<br/>(feedparser)"]
-    FETCH_RSS --> FILTER_TIME{"Published within<br/>Lookback Window?"}
+    RESOLVE_ID --> FETCH_RSS{"Fetch Public RSS Feed<br/>(feedparser with Retries)"}
+    FETCH_RSS -- "200 Success" --> FILTER_TIME{"Published within<br/>Lookback Window?"}
+    FETCH_RSS -- "404 / 500 / Throttled" --> WEB_FALLBACK["Channel Web Scraper Fallback<br/>(ytInitialData Extraction)"]
+    WEB_FALLBACK --> FILTER_TIME
 
     FILTER_TIME -- "No" --> SKIP_OLD["Skip Video"]
     FILTER_TIME -- "Yes" --> CHECK_STATE{"Video ID in<br/>state.json?"}
@@ -166,9 +168,7 @@ youtube-insight-digest/
 │   ├── main.py                # CLI pipeline orchestrator & dry-run runner
 │   ├── summarizer.py          # Google Gemini structured synthesis & insight generation
 │   ├── transcript_fetcher.py  # Subtitle extraction & timestamp alignment
-│   └── youtube_monitor.py     # Channel handle resolver, RSS feed parser & state manager
-└── tests/
-    └── test_monitor.py        # Automated unit and integration test suite
+│   └── youtube_monitor.py     # Channel handle resolver, RSS parser & web scraper fallback
 ```
 
 ---
@@ -245,11 +245,6 @@ py -3.11 -m src.main --hours 48
 ### Force Re-Processing (Bypass state.json)
 ```bash
 py -3.11 -m src.main --force --dry-run
-```
-
-### Run Unit Tests
-```bash
-py -3.11 -m unittest discover tests
 ```
 
 ---

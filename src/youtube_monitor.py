@@ -146,17 +146,187 @@ def resolve_channel_id(channel_entry: dict[str, Any]) -> str | None:
     return None
 
 
-def fetch_channel_rss(channel_id: str) -> list[dict[str, Any]]:
+DEFAULT_REQUEST_HEADERS: dict[str, str] = {
+    "User-Agent": (
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+        "AppleWebKit/537.36 (KHTML, like Gecko) "
+        "Chrome/124.0.0.0 Safari/537.36"
+    ),
+    "Accept-Language": "en-US,en;q=0.9",
+    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8"
+}
+
+
+def parse_relative_time(time_str: str, now: datetime) -> datetime:
     """
-    Pulls and parses the public RSS XML feed for a YouTube channel ID.
-    Returns parsed entry dictionaries.
+    Parses relative time strings (e.g. '11 hours ago', '1 day ago', '11 時間前')
+    into approximate UTC datetimes.
+    """
+    time_str = time_str.lower().strip()
+
+    # English patterns
+    match_en = re.search(r'(\d+)\s*(second|sec|minute|min|hour|hr|day|week|month|year)', time_str)
+    if match_en:
+        val = int(match_en.group(1))
+        unit = match_en.group(2)
+        if unit.startswith("sec"):
+            return now - timedelta(seconds=val)
+        elif unit.startswith("min"):
+            return now - timedelta(minutes=val)
+        elif unit.startswith("hour") or unit.startswith("hr"):
+            return now - timedelta(hours=val)
+        elif unit.startswith("day"):
+            return now - timedelta(days=val)
+        elif unit.startswith("week"):
+            return now - timedelta(weeks=val)
+        elif unit.startswith("month"):
+            return now - timedelta(days=val * 30)
+        elif unit.startswith("year"):
+            return now - timedelta(days=val * 365)
+
+    # Japanese / Asian patterns
+    match_ja = re.search(r'(\d+)\s*(秒|分|時間|日|週間|か月|年)', time_str)
+    if match_ja:
+        val = int(match_ja.group(1))
+        unit = match_ja.group(2)
+        if unit == "秒":
+            return now - timedelta(seconds=val)
+        elif unit == "分":
+            return now - timedelta(minutes=val)
+        elif unit == "時間":
+            return now - timedelta(hours=val)
+        elif unit == "日":
+            return now - timedelta(days=val)
+        elif unit == "週間":
+            return now - timedelta(weeks=val)
+        elif unit == "か月":
+            return now - timedelta(days=val * 30)
+        elif unit == "年":
+            return now - timedelta(days=val * 365)
+
+    return now
+
+
+def fetch_channel_rss(channel_id: str, max_retries: int = 3) -> list[dict[str, Any]]:
+    """
+    Pulls and parses the public RSS XML feed for a YouTube channel ID
+    using browser headers and exponential backoff retries.
     """
     rss_url = f"https://www.youtube.com/feeds/videos.xml?channel_id={channel_id}"
+    for attempt in range(max_retries):
+        try:
+            resp = requests.get(rss_url, headers=DEFAULT_REQUEST_HEADERS, timeout=10)
+            if resp.status_code == 200:
+                feed = feedparser.parse(resp.content)
+                if feed.entries:
+                    return feed.entries
+            elif resp.status_code in (404, 429, 500):
+                # Transient YouTube RSS throttling
+                pass
+        except Exception as exc:
+            pass
+
+        if attempt < max_retries - 1:
+            time.sleep(1.0 * (attempt + 1))
+
+    return []
+
+
+def fetch_channel_web_videos(channel_entry: dict[str, Any]) -> list[dict[str, Any]]:
+    """
+    Fallback mechanism: Scrapes recent video metadata directly from the channel's
+    public '/videos' web tab. Highly resilient when YouTube's RSS endpoint is throttled or down.
+    """
+    handle = channel_entry.get("handle", "").strip()
+    ch_id = channel_entry.get("channel_id", "").strip()
+    ch_name = channel_entry.get("name", "Unknown Channel")
+
+    if handle:
+        clean_handle = handle if handle.startswith("@") else f"@{handle}"
+        url = f"https://www.youtube.com/{clean_handle}/videos"
+    elif ch_id:
+        url = f"https://www.youtube.com/channel/{ch_id}/videos"
+    else:
+        url = channel_entry.get("url", "").rstrip("/") + "/videos"
+
     try:
-        feed = feedparser.parse(rss_url)
-        return feed.entries or []
+        resp = requests.get(url, headers=DEFAULT_REQUEST_HEADERS, timeout=12)
+        if resp.status_code != 200:
+            print(f"[Monitor Web Fallback] Warning: {ch_name} returned HTTP {resp.status_code}")
+            return []
+
+        html = resp.text
+        match = re.search(r'var ytInitialData\s*=\s*({.*?});</script>', html)
+        if not match:
+            match = re.search(r'window\["ytInitialData"\]\s*=\s*({.*?});</script>', html)
+        if not match:
+            return []
+
+        data = json.loads(match.group(1))
+
+        # Recursively extract video renderers and lockup view models
+        raw_items: list[tuple[str, dict[str, Any]]] = []
+
+        def find_items(obj: Any) -> None:
+            if isinstance(obj, dict):
+                if "lockupViewModel" in obj:
+                    raw_items.append(("lockup", obj["lockupViewModel"]))
+                elif "videoRenderer" in obj:
+                    raw_items.append(("renderer", obj["videoRenderer"]))
+                else:
+                    for v in obj.values():
+                        find_items(v)
+            elif isinstance(obj, list):
+                for v in obj:
+                    find_items(v)
+
+        find_items(data)
+        now_utc = datetime.now(timezone.utc)
+        results: list[dict[str, Any]] = []
+
+        for item_type, item in raw_items:
+            vid_id: str | None = None
+            title: str = ""
+            time_text: str = ""
+
+            if item_type == "lockup":
+                vid_id = item.get("contentId")
+                meta = item.get("metadata", {}).get("lockupMetadataViewModel", {})
+                title = meta.get("title", {}).get("content", "")
+                rows = meta.get("metadata", {}).get("contentMetadataViewModel", {}).get("metadataRows", [])
+                for row in rows:
+                    for part in row.get("metadataParts", []):
+                        t = part.get("text", {}).get("content", "")
+                        if any(marker in t.lower() for marker in ["ago", "前", "streamed"]):
+                            time_text = t
+            elif item_type == "renderer":
+                vid_id = item.get("videoId")
+                title = item.get("title", {}).get("runs", [{}])[0].get("text", "")
+                time_text = item.get("publishedTimeText", {}).get("simpleText", "")
+
+            if not vid_id or not title:
+                continue
+
+            pub_dt = parse_relative_time(time_text, now_utc) if time_text else now_utc
+
+            results.append({
+                "video_id": vid_id,
+                "title": title,
+                "url": f"https://www.youtube.com/watch?v={vid_id}",
+                "author": ch_name,
+                "channel_id": ch_id,
+                "channel_name": ch_name,
+                "channel_badge_color": channel_entry.get("badge_color", "#4f46e5"),
+                "category": channel_entry.get("category", "General AI"),
+                "published_iso": pub_dt.isoformat(),
+                "published_display": pub_dt.strftime("%b %d, %Y %H:%M UTC") if time_text else "Recently uploaded",
+                "thumbnail_url": f"https://i.ytimg.com/vi/{vid_id}/hqdefault.jpg",
+                "description": ""
+            })
+
+        return results
     except Exception as exc:
-        print(f"[Monitor] Error fetching RSS feed from {rss_url}: {exc}")
+        print(f"[Monitor Web Fallback] Notice: Web scraping fallback for '{ch_name}' failed: {exc}")
         return []
 
 
@@ -167,6 +337,7 @@ def scan_for_new_videos(
 ) -> tuple[list[dict[str, Any]], dict[str, Any]]:
     """
     Scans all enabled channels for new video uploads within the lookback window.
+    Uses public RSS feed with automatic web scraping fallback if YouTube throttles RSS.
 
     Args:
         hours_back: Maximum age of video in hours.
@@ -197,78 +368,92 @@ def scan_for_new_videos(
             print(f"[Monitor] Skipping '{ch_name}': could not resolve YouTube channel ID.")
             continue
 
+        # 1. Try public RSS feed first
         entries = fetch_channel_rss(resolved_id)
-        print(f"[Monitor] Fetched {len(entries)} recent items from '{ch_name}' ({ch_handle or resolved_id}).")
+        if entries:
+            print(f"[Monitor] Fetched {len(entries)} recent items via RSS from '{ch_name}' ({ch_handle or resolved_id}).")
 
-        for entry in entries:
-            # Extract video ID
-            vid_id = getattr(entry, "yt_videoid", None)
-            if not vid_id:
-                # Fallback extraction from id: 'yt:video:VIDEO_ID'
-                entry_id = getattr(entry, "id", "")
-                if "yt:video:" in entry_id:
-                    vid_id = entry_id.split("yt:video:")[-1]
+            for entry in entries:
+                vid_id = getattr(entry, "yt_videoid", None)
+                if not vid_id:
+                    entry_id = getattr(entry, "id", "")
+                    if "yt:video:" in entry_id:
+                        vid_id = entry_id.split("yt:video:")[-1]
+                    else:
+                        link = getattr(entry, "link", "")
+                        match = re.search(r"v=([\w-]{11})", link)
+                        vid_id = match.group(1) if match else None
+
+                if not vid_id:
+                    continue
+
+                if not ignore_state and vid_id in processed_ids:
+                    continue
+
+                pub_parsed = getattr(entry, "published_parsed", None)
+                if pub_parsed:
+                    pub_dt = datetime(*pub_parsed[:6], tzinfo=timezone.utc)
                 else:
-                    link = getattr(entry, "link", "")
-                    match = re.search(r"v=([\w-]{11})", link)
-                    vid_id = match.group(1) if match else None
+                    pub_str = getattr(entry, "published", "")
+                    try:
+                        pub_dt = datetime.fromisoformat(pub_str.replace("Z", "+00:00"))
+                    except Exception:
+                        pub_dt = now_utc
 
-            if not vid_id:
-                continue
+                if pub_dt < cutoff_time:
+                    continue
 
-            # Check if video was already processed
-            if not ignore_state and vid_id in processed_ids:
-                continue
+                title = getattr(entry, "title", "Untitled Video")
+                link = getattr(entry, "link", f"https://www.youtube.com/watch?v={vid_id}")
+                author = getattr(entry, "author", ch_name)
 
-            # Parse publish time
-            pub_parsed = getattr(entry, "published_parsed", None)
-            if pub_parsed:
-                pub_dt = datetime(*pub_parsed[:6], tzinfo=timezone.utc)
-            else:
-                pub_str = getattr(entry, "published", "")
+                media_thumbnail = getattr(entry, "media_thumbnail", [])
+                if media_thumbnail and isinstance(media_thumbnail, list) and "url" in media_thumbnail[0]:
+                    thumbnail_url = media_thumbnail[0]["url"]
+                else:
+                    thumbnail_url = f"https://i.ytimg.com/vi/{vid_id}/hqdefault.jpg"
+
+                description = getattr(entry, "summary", "")
+                media_desc = getattr(entry, "media_description", None)
+                if media_desc:
+                    description = media_desc
+
+                video_item = {
+                    "video_id": vid_id,
+                    "title": title,
+                    "url": link,
+                    "author": author,
+                    "channel_id": resolved_id,
+                    "channel_name": ch_name,
+                    "channel_badge_color": ch.get("badge_color", "#4f46e5"),
+                    "category": ch.get("category", "General AI"),
+                    "published_iso": pub_dt.isoformat(),
+                    "published_display": pub_dt.strftime("%b %d, %Y %H:%M UTC"),
+                    "thumbnail_url": thumbnail_url,
+                    "description": description.strip() if description else ""
+                }
+                new_videos.append(video_item)
+
+        else:
+            # 2. Seamless fallback to web scraping if RSS returned 0 or failed
+            print(f"[Monitor] RSS feed unavailable/empty for '{ch_name}'. Triggering web channel fallback...")
+            web_videos = fetch_channel_web_videos(ch)
+            print(f"[Monitor] Web fallback retrieved {len(web_videos)} videos for '{ch_name}'.")
+
+            for v in web_videos:
+                vid_id = v["video_id"]
+                if not ignore_state and vid_id in processed_ids:
+                    continue
+
                 try:
-                    pub_dt = datetime.fromisoformat(pub_str.replace("Z", "+00:00"))
+                    pub_dt = datetime.fromisoformat(v["published_iso"])
                 except Exception:
                     pub_dt = now_utc
 
-            # Enforce lookback window
-            if pub_dt < cutoff_time:
-                continue
+                if pub_dt < cutoff_time:
+                    continue
 
-            # Extract metadata
-            title = getattr(entry, "title", "Untitled Video")
-            link = getattr(entry, "link", f"https://www.youtube.com/watch?v={vid_id}")
-            author = getattr(entry, "author", ch_name)
-            
-            # Thumbnail extraction
-            media_thumbnail = getattr(entry, "media_thumbnail", [])
-            if media_thumbnail and isinstance(media_thumbnail, list) and "url" in media_thumbnail[0]:
-                thumbnail_url = media_thumbnail[0]["url"]
-            else:
-                thumbnail_url = f"https://i.ytimg.com/vi/{vid_id}/hqdefault.jpg"
-
-            # Description extraction
-            description = getattr(entry, "summary", "")
-            media_desc = getattr(entry, "media_description", None)
-            if media_desc:
-                description = media_desc
-
-            video_item = {
-                "video_id": vid_id,
-                "title": title,
-                "url": link,
-                "author": author,
-                "channel_id": resolved_id,
-                "channel_name": ch_name,
-                "channel_badge_color": ch.get("badge_color", "#4f46e5"),
-                "category": ch.get("category", "General AI"),
-                "published_iso": pub_dt.isoformat(),
-                "published_display": pub_dt.strftime("%b %d, %Y %H:%M UTC"),
-                "thumbnail_url": thumbnail_url,
-                "description": description.strip() if description else ""
-            }
-
-            new_videos.append(video_item)
+                new_videos.append(v)
 
     # Sort descending by publication date
     new_videos.sort(key=lambda x: x["published_iso"], reverse=True)
