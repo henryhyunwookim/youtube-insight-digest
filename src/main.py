@@ -43,6 +43,8 @@ if sys.stdout and hasattr(sys.stdout, "reconfigure"):
 if sys.stderr and hasattr(sys.stderr, "reconfigure"):
     sys.stderr.reconfigure(encoding="utf-8")
 
+import tempfile
+
 from src.auth import authenticate_gmail
 from src.config import (
     BASE_DIR,
@@ -50,6 +52,7 @@ from src.config import (
     DEFAULT_LOOKBACK_HOURS,
     RECIPIENT_EMAIL
 )
+from src.storage import log_execution
 from src.youtube_monitor import scan_for_new_videos, save_state, load_channels
 from src.transcript_fetcher import fetch_video_transcript
 from src.summarizer import VideoSummarizer
@@ -60,7 +63,9 @@ def run_pipeline(
     hours_back: int = DEFAULT_LOOKBACK_HOURS,
     dry_run: bool = False,
     target_channel: str | None = None,
-    ignore_state: bool = False
+    ignore_state: bool = False,
+    trigger_source: str = "cli",
+    preview_output: str | None = None
 ) -> dict[str, Any]:
     """
     Executes the full YouTube monitor, transcript synthesis, and email delivery workflow.
@@ -165,7 +170,11 @@ def run_pipeline(
                     channel_names=channel_names
                 )
 
-            preview_path = BASE_DIR / "digest_preview.html"
+            if preview_output:
+                preview_path = Path(preview_output)
+            else:
+                preview_path = Path(tempfile.gettempdir()) / "youtube_digest_preview.html"
+
             with open(preview_path, "w", encoding="utf-8") as pf:
                 pf.write(html_content)
 
@@ -193,10 +202,22 @@ def run_pipeline(
         print("===========================================================================")
         print(" Pipeline execution finished successfully.")
         print("===========================================================================")
+        log_execution(
+            success=True,
+            stats=stats,
+            error=None,
+            trigger_source=trigger_source
+        )
         return {"success": True, "stats": stats, "error": None}
 
     except Exception as exc:
         print(f"\n[Pipeline Error] Execution halted: {exc}", file=sys.stderr)
+        log_execution(
+            success=False,
+            stats=stats,
+            error=str(exc),
+            trigger_source=trigger_source
+        )
         return {"success": False, "stats": stats, "error": str(exc)}
 
 
@@ -216,7 +237,13 @@ def main() -> None:
     parser.add_argument(
         "--dry-run",
         action="store_true",
-        help="Simulate run, generate summaries, and save digest_preview.html without dispatching email."
+        help="Simulate run, generate summaries, and save preview without dispatching email."
+    )
+    parser.add_argument(
+        "--preview-output",
+        type=str,
+        default=None,
+        help="Custom file path for generated HTML preview (defaults to OS temporary directory)."
     )
     parser.add_argument(
         "--auth",
@@ -247,7 +274,9 @@ def main() -> None:
         hours_back=args.hours,
         dry_run=args.dry_run,
         target_channel=args.channel,
-        ignore_state=args.force
+        ignore_state=args.force,
+        trigger_source="cli",
+        preview_output=args.preview_output
     )
 
     if not result.get("success"):

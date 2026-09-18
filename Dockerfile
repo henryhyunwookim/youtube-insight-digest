@@ -13,9 +13,6 @@ RUN pip install --no-cache-dir -r requirements.txt
 COPY src/ ./src/
 COPY channels.json ./
 
-# Copy local credentials, token, and environment configuration
-COPY credentials.json* token.json* .env* ./
-
 # Add /app to PYTHONPATH
 ENV PYTHONPATH=/app
 

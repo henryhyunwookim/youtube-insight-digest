@@ -39,7 +39,11 @@ def trigger_digest() -> tuple[Response, int]:
                     dry_run = bool(data["dry_run"])
 
         print(f"[WebService] Trigger received: lookback={hours}h, dry_run={dry_run}")
-        result: dict[str, Any] = run_pipeline(hours_back=hours, dry_run=dry_run)
+        result: dict[str, Any] = run_pipeline(
+            hours_back=hours,
+            dry_run=dry_run,
+            trigger_source="cloud_http"
+        )
 
         if result.get("success"):
             return jsonify({

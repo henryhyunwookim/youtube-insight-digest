@@ -19,6 +19,7 @@ import requests
 from bs4 import BeautifulSoup
 
 from src.config import CHANNELS_FILE, STATE_FILE, DEFAULT_LOOKBACK_HOURS
+from src.storage import load_cloud_state, save_cloud_state
 
 
 # Cache resolved channel IDs to avoid repetitive web requests
@@ -44,26 +45,29 @@ def load_channels() -> list[dict[str, Any]]:
 
 def load_state() -> dict[str, Any]:
     """
-    Loads previously processed video IDs from state.json to prevent duplicate digests.
+    Loads previously processed video IDs from cloud state (GCS) to prevent duplicate digests.
+    Falls back to local file if present, or temp cache.
     """
-    if not STATE_FILE.exists():
-        return {"processed_video_ids": {}, "last_run": None}
+    state = load_cloud_state()
+    if (not state or not state.get("processed_video_ids")) and STATE_FILE.exists():
+        try:
+            with open(STATE_FILE, "r", encoding="utf-8") as f:
+                data = json.load(f)
+                if isinstance(data, dict):
+                    state = data
+                    save_cloud_state(state)
+        except Exception:
+            pass
 
-    try:
-        with open(STATE_FILE, "r", encoding="utf-8") as f:
-            data = json.load(f)
-            if "processed_video_ids" not in data:
-                data["processed_video_ids"] = {}
-            return data
-    except Exception as exc:
-        print(f"[Monitor] Warning: Could not read state file: {exc}. Starting fresh.")
-        return {"processed_video_ids": {}, "last_run": None}
+    if "processed_video_ids" not in state:
+        state["processed_video_ids"] = {}
+    return state
 
 
 def save_state(state: dict[str, Any]) -> None:
     """
-    Saves state including processed video IDs and last run timestamp to state.json.
-    Prunes entries older than 30 days to keep the state file lightweight.
+    Saves state including processed video IDs and last run timestamp to Google Cloud Storage.
+    Prunes entries older than 30 days to keep the state lightweight.
     """
     try:
         # Prune old entries (> 30 days)
@@ -75,10 +79,9 @@ def save_state(state: dict[str, Any]) -> None:
         state["processed_video_ids"] = cleaned_ids
         state["last_run"] = datetime.now(timezone.utc).isoformat()
 
-        with open(STATE_FILE, "w", encoding="utf-8") as f:
-            json.dump(state, f, indent=2, ensure_ascii=False)
+        save_cloud_state(state)
     except Exception as exc:
-        print(f"[Monitor] Warning: Could not save state: {exc}")
+        print(f"[Monitor] Warning: Could not save cloud state: {exc}")
 
 
 def resolve_channel_id(channel_entry: dict[str, Any]) -> str | None:

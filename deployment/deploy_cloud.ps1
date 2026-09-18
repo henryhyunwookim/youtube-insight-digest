@@ -90,8 +90,8 @@ gcloud config set project $PROJECT_ID
 gcloud config set run/region $REGION
 
 # Step 2: Enable required GCP services
-Write-Host "[Step 2/5] Enabling required APIs (Cloud Run, Cloud Build, Artifact Registry, Cloud Scheduler)..." -ForegroundColor Cyan
-gcloud services enable run.googleapis.com cloudbuild.googleapis.com artifactregistry.googleapis.com cloudscheduler.googleapis.com
+Write-Host "[Step 2/5] Enabling required APIs (Cloud Run, Cloud Build, Artifact Registry, Cloud Scheduler, Secret Manager, Cloud Storage)..." -ForegroundColor Cyan
+gcloud services enable run.googleapis.com cloudbuild.googleapis.com artifactregistry.googleapis.com cloudscheduler.googleapis.com secretmanager.googleapis.com storage.googleapis.com
 
 # Step 3: Deploy container from source to Cloud Run
 $repoRoot = (Resolve-Path (Join-Path $PSScriptRoot "..\")).Path
