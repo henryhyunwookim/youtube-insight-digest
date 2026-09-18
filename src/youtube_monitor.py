@@ -84,20 +84,20 @@ def save_state(state: dict[str, Any]) -> None:
         print(f"[Monitor] Warning: Could not save cloud state: {exc}")
 
 
-def resolve_channel_id(channel_entry: dict[str, Any]) -> str | None:
+def resolve_channel_id(channel_entry: dict[str, Any], force_refresh: bool = False) -> str | None:
     """
     Resolves the canonical 24-character YouTube Channel ID (e.g., 'UC...') from
     either an explicit channel ID, handle (@name), or channel URL.
     """
-    # 1. Direct channel_id if configured
-    if "channel_id" in channel_entry and channel_entry["channel_id"]:
+    # 1. Direct channel_id if configured (unless force_refresh is requested)
+    if not force_refresh and "channel_id" in channel_entry and channel_entry["channel_id"]:
         return channel_entry["channel_id"]
 
     handle = channel_entry.get("handle", "").strip()
     url = channel_entry.get("url", "").strip()
 
     cache_key = handle or url
-    if cache_key in _RESOLVED_CHANNEL_CACHE:
+    if not force_refresh and cache_key in _RESOLVED_CHANNEL_CACHE:
         return _RESOLVED_CHANNEL_CACHE[cache_key]
 
     target_url = url
@@ -160,15 +160,22 @@ DEFAULT_REQUEST_HEADERS: dict[str, str] = {
 }
 
 
-def parse_relative_time(time_str: str, now: datetime) -> datetime:
+def parse_relative_time(time_str: str, now: datetime) -> datetime | None:
     """
-    Parses relative time strings (e.g. '11 hours ago', '1 day ago', '11 時間前')
-    into approximate UTC datetimes.
+    Parses relative time strings (e.g. '11 hours ago', '1 day ago', '11 時間前', '3시간 전')
+    into approximate UTC datetimes. Returns None if the string cannot be parsed.
     """
-    time_str = time_str.lower().strip()
+    if not time_str:
+        return None
+
+    clean_str = time_str.lower().strip()
+    # Strip common streaming / premiere prefixes
+    for prefix in ["streamed", "premiered", "스트리밍:", "최초 공개:", "live in", "broadcast"]:
+        if clean_str.startswith(prefix):
+            clean_str = clean_str[len(prefix):].strip()
 
     # English patterns
-    match_en = re.search(r'(\d+)\s*(second|sec|minute|min|hour|hr|day|week|month|year)', time_str)
+    match_en = re.search(r'(\d+)\s*(second|sec|minute|min|hour|hr|day|week|month|year)', clean_str)
     if match_en:
         val = int(match_en.group(1))
         unit = match_en.group(2)
@@ -187,8 +194,8 @@ def parse_relative_time(time_str: str, now: datetime) -> datetime:
         elif unit.startswith("year"):
             return now - timedelta(days=val * 365)
 
-    # Japanese / Asian patterns
-    match_ja = re.search(r'(\d+)\s*(秒|分|時間|日|週間|か月|年)', time_str)
+    # Japanese patterns
+    match_ja = re.search(r'(\d+)\s*(秒|分|時間|日|週間|か月|年)\s*前?', clean_str)
     if match_ja:
         val = int(match_ja.group(1))
         unit = match_ja.group(2)
@@ -207,7 +214,27 @@ def parse_relative_time(time_str: str, now: datetime) -> datetime:
         elif unit == "年":
             return now - timedelta(days=val * 365)
 
-    return now
+    # Korean patterns
+    match_ko = re.search(r'(\d+)\s*(초|분|시간|일|주|주일|개월|달|년)\s*전?', clean_str)
+    if match_ko:
+        val = int(match_ko.group(1))
+        unit = match_ko.group(2)
+        if unit == "초":
+            return now - timedelta(seconds=val)
+        elif unit == "분":
+            return now - timedelta(minutes=val)
+        elif unit == "시간":
+            return now - timedelta(hours=val)
+        elif unit == "일":
+            return now - timedelta(days=val)
+        elif unit in ("주", "주일"):
+            return now - timedelta(weeks=val)
+        elif unit in ("개월", "달"):
+            return now - timedelta(days=val * 30)
+        elif unit == "년":
+            return now - timedelta(days=val * 365)
+
+    return None
 
 
 def fetch_channel_rss(channel_id: str, max_retries: int = 3) -> list[dict[str, Any]]:
@@ -300,7 +327,7 @@ def fetch_channel_web_videos(channel_entry: dict[str, Any]) -> list[dict[str, An
                 for row in rows:
                     for part in row.get("metadataParts", []):
                         t = part.get("text", {}).get("content", "")
-                        if any(marker in t.lower() for marker in ["ago", "前", "streamed"]):
+                        if any(marker in t.lower() for marker in ["ago", "前", "전", "streamed", "premiered", "스트리밍", "최초 공개"]):
                             time_text = t
             elif item_type == "renderer":
                 vid_id = item.get("videoId")
@@ -310,7 +337,10 @@ def fetch_channel_web_videos(channel_entry: dict[str, Any]) -> list[dict[str, An
             if not vid_id or not title:
                 continue
 
-            pub_dt = parse_relative_time(time_text, now_utc) if time_text else now_utc
+            pub_dt = parse_relative_time(time_text, now_utc) if time_text else None
+            if not pub_dt:
+                # Omit video whose publication age cannot be verified to prevent old videos from appearing as new
+                continue
 
             results.append({
                 "video_id": vid_id,
@@ -322,7 +352,7 @@ def fetch_channel_web_videos(channel_entry: dict[str, Any]) -> list[dict[str, An
                 "channel_badge_color": channel_entry.get("badge_color", "#4f46e5"),
                 "category": channel_entry.get("category", "General AI"),
                 "published_iso": pub_dt.isoformat(),
-                "published_display": pub_dt.strftime("%b %d, %Y %H:%M UTC") if time_text else "Recently uploaded",
+                "published_display": pub_dt.strftime("%b %d, %Y %H:%M UTC"),
                 "thumbnail_url": f"https://i.ytimg.com/vi/{vid_id}/hqdefault.jpg",
                 "description": ""
             })
@@ -373,6 +403,15 @@ def scan_for_new_videos(
 
         # 1. Try public RSS feed first
         entries = fetch_channel_rss(resolved_id)
+        if not entries and (ch_handle or ch.get("url")):
+            # Attempt re-resolving ID dynamically from handle/url in case configured ID was stale or invalid
+            re_resolved = resolve_channel_id(ch, force_refresh=True)
+            if re_resolved and re_resolved != resolved_id:
+                print(f"[Monitor] Resolved fresh channel ID '{re_resolved}' for '{ch_name}' (was '{resolved_id}'). Retrying RSS...")
+                entries = fetch_channel_rss(re_resolved)
+                if entries:
+                    resolved_id = re_resolved
+
         if entries:
             print(f"[Monitor] Fetched {len(entries)} recent items via RSS from '{ch_name}' ({ch_handle or resolved_id}).")
 
@@ -394,14 +433,23 @@ def scan_for_new_videos(
                     continue
 
                 pub_parsed = getattr(entry, "published_parsed", None)
+                pub_dt = None
                 if pub_parsed:
-                    pub_dt = datetime(*pub_parsed[:6], tzinfo=timezone.utc)
-                else:
-                    pub_str = getattr(entry, "published", "")
                     try:
-                        pub_dt = datetime.fromisoformat(pub_str.replace("Z", "+00:00"))
+                        pub_dt = datetime(*pub_parsed[:6], tzinfo=timezone.utc)
                     except Exception:
-                        pub_dt = now_utc
+                        pass
+                if not pub_dt:
+                    pub_str = getattr(entry, "published", "")
+                    if pub_str:
+                        try:
+                            pub_dt = datetime.fromisoformat(pub_str.replace("Z", "+00:00"))
+                        except Exception:
+                            pass
+
+                if not pub_dt:
+                    print(f"[Monitor] Skipping RSS item '{getattr(entry, 'title', vid_id)}': publication date unverified.")
+                    continue
 
                 if pub_dt < cutoff_time:
                     continue
@@ -448,10 +496,14 @@ def scan_for_new_videos(
                 if not ignore_state and vid_id in processed_ids:
                     continue
 
+                pub_iso = v.get("published_iso")
+                if not pub_iso:
+                    continue
+
                 try:
-                    pub_dt = datetime.fromisoformat(v["published_iso"])
+                    pub_dt = datetime.fromisoformat(pub_iso)
                 except Exception:
-                    pub_dt = now_utc
+                    continue
 
                 if pub_dt < cutoff_time:
                     continue

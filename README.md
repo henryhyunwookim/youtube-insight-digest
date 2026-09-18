@@ -66,6 +66,8 @@ This repository is architected for zero-setup execution across multiple workstat
 - **Dual-Mode Fallback**: All cloud integrations attempt the Python Google Cloud SDK first, gracefully falling back to authenticated `gcloud` CLI commands.
 - **Zero Workspace Litter**: Local state caching and dry-run preview files default strictly to the OS temporary directory (`tempfile.gettempdir()`), keeping the Git repository completely clean.
 - **Quota-Free & High Reliability**: Monitors channels via public RSS feeds (`feedparser`) with automatic web-scraping fallback (`ytInitialData`) when YouTube throttles feeds.
+- **Resilient Multi-Language Timestamp Ingestion**: Strict publication date verification with multilingual relative time parsing (English, Japanese, Korean) and livestream prefix stripping. Unverified dates are safely excluded to guarantee older videos never falsely appear as new uploads.
+- **Self-Healing Channel Resolver**: Auto-recovers canonical YouTube channel IDs dynamically from handles/URLs if a configured channel ID fails or returns 404.
 - **Deep Multilingual Transcripts**: Extracts manual or auto-generated video captions with timestamps via `youtube-transcript-api` across English, Japanese, Korean, and more.
 - **Gemini Intelligence Engine**: Synthesizes high-signal briefings (one-line hooks, executive summaries, strategic insights, actionable takeaways, timestamped key moments).
 - **Responsive Gmail Digest**: Clean typography, dynamic channel badge pills, embedded thumbnails, and cards optimized for mobile and desktop Gmail clients.
@@ -190,6 +192,12 @@ py -3.11 -m src.main
 ### Filter by Specific Channel
 ```bash
 py -3.11 -m src.main --channel @LangChain --dry-run
+```
+
+### Establish Clean Baseline State (First Run / New Channels)
+Seeds all current videos across all monitored channels directly into state tracking without synthesizing summaries or dispatching emails. Ensures that newly added channels will only trigger digests for videos released *after* this baseline is created:
+```bash
+py -3.11 -m src.main --seed-state
 ```
 
 ### Custom Lookback Window

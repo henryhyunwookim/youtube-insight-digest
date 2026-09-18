@@ -53,7 +53,15 @@ from src.config import (
     RECIPIENT_EMAIL
 )
 from src.storage import log_execution
-from src.youtube_monitor import scan_for_new_videos, save_state, load_channels
+from src.youtube_monitor import (
+    scan_for_new_videos,
+    save_state,
+    load_state,
+    load_channels,
+    resolve_channel_id,
+    fetch_channel_rss,
+    fetch_channel_web_videos
+)
 from src.transcript_fetcher import fetch_video_transcript
 from src.summarizer import VideoSummarizer
 from src.email_sender import EmailSender
@@ -221,6 +229,51 @@ def run_pipeline(
         return {"success": False, "stats": stats, "error": str(exc)}
 
 
+def seed_baseline_state() -> None:
+    """
+    Seeds the state tracking file with all current videos found across all channels
+    so that only future uploads after this baseline will be digested.
+    """
+    print("===========================================================================")
+    print(" Seeding Baseline State for All Monitored Channels")
+    print("===========================================================================")
+    channels = load_channels()
+    state = load_state()
+    processed = state.setdefault("processed_video_ids", {})
+    now_iso = datetime.now(timezone.utc).isoformat()
+    total_seeded = 0
+
+    for ch in channels:
+        ch_name = ch.get("name", "Unknown Channel")
+        resolved_id = resolve_channel_id(ch)
+        channel_vids: list[str] = []
+
+        if resolved_id:
+            entries = fetch_channel_rss(resolved_id)
+            for entry in entries:
+                vid_id = getattr(entry, "yt_videoid", None)
+                if vid_id:
+                    channel_vids.append(vid_id)
+
+        if not channel_vids:
+            web_videos = fetch_channel_web_videos(ch)
+            for v in web_videos:
+                channel_vids.append(v["video_id"])
+
+        for vid in channel_vids:
+            if vid not in processed:
+                processed[vid] = now_iso
+                total_seeded += 1
+
+        print(f" -> '{ch_name}': processed {len(channel_vids)} video ID(s).")
+
+    save_state(state)
+    print("===========================================================================")
+    print(f" Baseline established! Seeded {total_seeded} new video ID(s) into state.")
+    print(" Future pipeline executions will only process videos published from now on.")
+    print("===========================================================================")
+
+
 def main() -> None:
     """
     CLI entry point parsing command-line flags.
@@ -261,6 +314,11 @@ def main() -> None:
         action="store_true",
         help="Bypass state tracking to re-process previously processed videos."
     )
+    parser.add_argument(
+        "--seed-state",
+        action="store_true",
+        help="Seed all current videos across monitored channels into state tracking to establish a clean baseline."
+    )
 
     args = parser.parse_args()
 
@@ -268,6 +326,10 @@ def main() -> None:
         print("[CLI] Initiating interactive Gmail OAuth setup...")
         authenticate_gmail()
         print("[CLI] Authentication complete. You may now run the pipeline.")
+        sys.exit(0)
+
+    if args.seed_state:
+        seed_baseline_state()
         sys.exit(0)
 
     result = run_pipeline(
