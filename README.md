@@ -111,6 +111,8 @@ flowchart TD
 
 > [!TIP]
 > You can add, disable, or customize channels at any time in [`channels.json`](channels.json). The system automatically resolves `@handles` to internal YouTube channel IDs.
+>
+> *Note for Cloud Deployments:* Because `channels.json` is packaged into the container image at build time, changes require redeploying the Cloud Run service (`.\deployment\deploy_cloud.ps1`) for the scheduled cloud pipeline to reflect the updates.
 
 ---
 
