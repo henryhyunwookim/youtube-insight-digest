@@ -3,7 +3,7 @@ YouTube Insight Digest - Video Transcript Extraction Module.
 
 Purpose:
     Retrieves video subtitles/captions using youtube-transcript-api across multiple
-    languages (English, Japanese, Korean, etc.) with automatic fallback to generated transcripts.
+    languages (English, Japanese, Korean, Chinese, etc.) with automatic fallback to generated transcripts.
     Formats transcripts with timestamp markers for accurate LLM citation.
 """
 
@@ -48,7 +48,7 @@ def fetch_video_transcript(video_id: str) -> dict[str, Any]:
             transcript_list = getattr(YouTubeTranscriptApi, "list_transcripts")(video_id)
 
         # Attempt to find manual transcript first, then fallback to auto-generated
-        preferred_languages = ["en", "en-US", "en-GB", "ja", "ko"]
+        preferred_languages = ["en", "en-US", "en-GB", "ja", "ko", "zh-Hans", "zh-Hant", "zh-CN", "zh-TW", "zh-HK", "zh"]
         transcript = None
 
         try:

@@ -162,7 +162,7 @@ DEFAULT_REQUEST_HEADERS: dict[str, str] = {
 
 def parse_relative_time(time_str: str, now: datetime) -> datetime | None:
     """
-    Parses relative time strings (e.g. '11 hours ago', '1 day ago', '11 時間前', '3시간 전')
+    Parses relative time strings (e.g. '11 hours ago', '1 day ago', '11 時間前', '3시간 전', '2 小时前', '3 小時前')
     into approximate UTC datetimes. Returns None if the string cannot be parsed.
     """
     if not time_str:
@@ -170,7 +170,27 @@ def parse_relative_time(time_str: str, now: datetime) -> datetime | None:
 
     clean_str = time_str.lower().strip()
     # Strip common streaming / premiere prefixes
-    for prefix in ["streamed", "premiered", "스트리밍:", "최초 공개:", "live in", "broadcast"]:
+    for prefix in [
+        # English
+        "streamed", "premiered", "live in", "broadcast",
+        # Japanese
+        "ライブ配信済み：", "ライブ配信済み:", "ライブ配信済み",
+        "プレミア公開済み：", "プレミア公開済み:", "プレミア公開済み",
+        "プレミア公開：", "プレミア公開:", "プレミア公開",
+        "配信済み：", "配信済み:", "配信済み",
+        "ライブ配信：", "ライブ配信:", "ライブ配信",
+        # Korean
+        "스트리밍:", "스트리밍", "최초 공개:", "최초 공개",
+        # Chinese (Simplified & Traditional)
+        "已串流直播：", "已串流直播:", "已串流直播",
+        "已結束直播：", "已結束直播:", "已結束直播",
+        "已直播：", "已直播:", "已直播",
+        "首播于：", "首播于:", "首播于",
+        "首播於：", "首播於:", "首播於",
+        "首播：", "首播:", "首播",
+        "直播時間：", "直播時間:", "直播時間",
+        "直播时间：", "直播时间:", "直播时间",
+    ]:
         if clean_str.startswith(prefix):
             clean_str = clean_str[len(prefix):].strip()
 
@@ -192,6 +212,29 @@ def parse_relative_time(time_str: str, now: datetime) -> datetime | None:
         elif unit.startswith("month"):
             return now - timedelta(days=val * 30)
         elif unit.startswith("year"):
+            return now - timedelta(days=val * 365)
+
+    # Chinese patterns (Simplified & Traditional)
+    match_zh = re.search(
+        r'(\d+)\s*(秒|分钟|分鐘|分|小时|小時|天|日|周|週|星期|礼拜|禮拜|个月|個月|年)\s*前?',
+        clean_str
+    )
+    if match_zh:
+        val = int(match_zh.group(1))
+        unit = match_zh.group(2)
+        if unit == "秒":
+            return now - timedelta(seconds=val)
+        elif unit in ("分钟", "分鐘", "分"):
+            return now - timedelta(minutes=val)
+        elif unit in ("小时", "小時"):
+            return now - timedelta(hours=val)
+        elif unit in ("天", "日"):
+            return now - timedelta(days=val)
+        elif unit in ("周", "週", "星期", "礼拜", "禮拜"):
+            return now - timedelta(weeks=val)
+        elif unit in ("个月", "個月"):
+            return now - timedelta(days=val * 30)
+        elif unit == "年":
             return now - timedelta(days=val * 365)
 
     # Japanese patterns
@@ -327,7 +370,12 @@ def fetch_channel_web_videos(channel_entry: dict[str, Any]) -> list[dict[str, An
                 for row in rows:
                     for part in row.get("metadataParts", []):
                         t = part.get("text", {}).get("content", "")
-                        if any(marker in t.lower() for marker in ["ago", "前", "전", "streamed", "premiered", "스트리밍", "최초 공개"]):
+                        if any(marker in t.lower() for marker in [
+                            "ago", "前", "전", "streamed", "premiered",
+                            "配信済み", "プレミア公開", "ライブ配信",
+                            "스트리밍", "최초 공개",
+                            "已直播", "已串流直播", "首播", "已結束直播"
+                        ]):
                             time_text = t
             elif item_type == "renderer":
                 vid_id = item.get("videoId")
