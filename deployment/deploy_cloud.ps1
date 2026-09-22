@@ -11,7 +11,7 @@
     GCP Project ID. Defaults to .env configuration or active gcloud project.
 
 .PARAMETER Region
-    Deployment region. Defaults to 'us-central1'.
+    Deployment region. Defaults to 'asia-northeast1'.
 
 .PARAMETER ServiceName
     Cloud Run service name. Defaults to 'youtube-insight-digest'.
@@ -63,7 +63,7 @@ if (Test-Path $envPath) {
 }
 
 $PROJECT_ID = if ($ProjectId) { $ProjectId } elseif ($ENV_GCP_PROJECT_ID) { $ENV_GCP_PROJECT_ID } else { "gen-lang-client-0480639565" }
-$REGION = if ($Region) { $Region } elseif ($ENV_GCP_REGION) { $ENV_GCP_REGION } else { "us-central1" }
+$REGION = if ($Region) { $Region } elseif ($ENV_GCP_REGION) { $ENV_GCP_REGION } else { "asia-northeast1" }
 $SERVICE_NAME = if ($ServiceName) { $ServiceName } elseif ($ENV_SERVICE_NAME) { $ENV_SERVICE_NAME } else { "youtube-insight-digest" }
 $JOB_NAME = if ($JobName) { $JobName } elseif ($ENV_JOB_NAME) { $ENV_JOB_NAME } else { "youtube-insight-daily-trigger" }
 $SCHEDULE = if ($Schedule) { $Schedule } elseif ($ENV_SCHEDULE) { $ENV_SCHEDULE } else { "0 12 * * *" }

@@ -230,8 +230,23 @@ Deploy the system as an automated, serverless microservice on **Google Cloud Run
 The container image contains **no baked-in secrets or tokens**; it securely resolves credentials from Secret Manager and persists state directly to Google Cloud Storage.
 
 ```powershell
-# Automated deployment using PowerShell script:
+# Standard deployment (defaults to asia-northeast1, 12:00 PM JST):
+.\deployment\deploy_cloud.ps1
+
+# Or with explicit parameters:
 .\deployment\deploy_cloud.ps1 -ProjectId "gen-lang-client-0480639565" -Region "asia-northeast1" -Schedule "0 12 * * *" -TimeZone "Asia/Tokyo"
+```
+
+### Verification & Logs
+
+Check execution logs or manually trigger the Cloud Run service:
+
+```powershell
+# Tail Cloud Run logs:
+gcloud beta run services logs tail youtube-insight-digest --region=asia-northeast1
+
+# Manually trigger via Cloud Scheduler:
+gcloud scheduler jobs run youtube-insight-daily-trigger --location=asia-northeast1
 ```
 
 ---
