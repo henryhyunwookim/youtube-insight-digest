@@ -7,7 +7,7 @@
 [![Google Cloud Run](https://img.shields.io/badge/Google%20Cloud-Run%20%26%20Scheduler-4285F4.svg)](https://cloud.google.com/run)
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 
-An automated intelligence system that monitors premier YouTube technical channels (**AI Engineer**, **LangChain**, **SuperDataScience**, **AWS Developers**), extracts video transcripts and metadata, synthesizes executive summaries and strategic insights using **Google Gemini**, and dispatches a responsive HTML digest to your **Gmail** every day at **12:00 PM Japan Standard Time (JST)**.
+An automated intelligence system that monitors premier YouTube technical channels (**AI Engineer**, **LangChain**, **SuperDataScience**, **AWS Developers**, **How I AI**), extracts video transcripts and metadata, synthesizes executive summaries and strategic insights using **Google Gemini**, and dispatches a responsive HTML digest to your **Gmail** every day at **12:00 PM Japan Standard Time (JST)**.
 
 Built on a **Cloud-Native, Multi-PC Portable Architecture** using **Google Cloud Secret Manager** and **Google Cloud Storage (GCS)**, eliminating all local secret, token, and state file dependencies.
 
@@ -67,6 +67,7 @@ This repository is architected for zero-setup execution across multiple workstat
 - **Zero Workspace Litter**: Local state caching and dry-run preview files default strictly to the OS temporary directory (`tempfile.gettempdir()`), keeping the Git repository completely clean.
 - **Quota-Free & High Reliability**: Monitors channels via public RSS feeds (`feedparser`) with automatic web-scraping fallback (`ytInitialData`) when YouTube throttles feeds.
 - **Resilient Multi-Language Timestamp Ingestion**: Strict publication date verification with multilingual relative time parsing (English, Japanese, Korean, Simplified & Traditional Chinese) and livestream prefix stripping. Unverified dates are safely excluded to guarantee older videos never falsely appear as new uploads.
+- **Direct Timestamp Video Linking**: Key moments dynamically compute second offsets and route the `▶ Watch on YouTube` button directly to the exact point in the video (`?t=...`).
 - **Self-Healing Channel Resolver**: Auto-recovers canonical YouTube channel IDs dynamically from handles/URLs if a configured channel ID fails or returns 404.
 - **Deep Multilingual Transcripts**: Extracts manual or auto-generated video captions with timestamps via `youtube-transcript-api` across English, Japanese, Korean, Chinese, and more.
 - **Gemini Intelligence Engine**: Synthesizes high-signal briefings (one-line hooks, executive summaries, strategic insights, actionable takeaways, timestamped key moments).
@@ -108,6 +109,7 @@ flowchart TD
 | **LangChain** | `@LangChain` | LLM Frameworks | LangGraph, autonomous agents, evaluation frameworks |
 | **SuperDataScience** | `@sds-superdatascience` | Data Science | Data science, machine learning models, industry interviews |
 | **AWS Developers** | `@awsdevelopers` | Cloud & Infrastructure | Cloud infrastructure, serverless AI, Amazon Bedrock |
+| **How I AI** | `@howiaipodcast` | AI Podcast & Interviews | AI podcasts, founder interviews, practical AI workflows |
 
 > [!TIP]
 > You can add, disable, or customize channels at any time in [`channels.json`](channels.json). The system automatically resolves `@handles` to internal YouTube channel IDs.

@@ -38,5 +38,15 @@
     "category": "Cloud Infrastructure & GenAI",
     "badge_color": "#ec4899",
     "enabled": true
+  },
+  {
+    "id": "how-i-ai-podcast",
+    "name": "How I AI",
+    "handle": "@howiaipodcast",
+    "channel_id": "UCoI1l5PPRkqulrtl6PzNibx",
+    "url": "https://www.youtube.com/@howiaipodcast",
+    "category": "AI Podcast & Interviews",
+    "badge_color": "#8b5cf6",
+    "enabled": true
   }
 ]

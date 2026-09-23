@@ -98,8 +98,9 @@ class EmailSender:
                     </div>
                     """
 
-                # Notable moment pill
+                # Notable moment pill — also build a timestamped watch URL
                 moment_html = ""
+                watch_url = url  # default: start from beginning
                 if moments:
                     m = moments[0]
                     ts = m.get("timestamp", "")
@@ -110,6 +111,20 @@ class EmailSender:
                             <strong style="color: #2563eb;">{ts}</strong> {note}
                         </div>
                         """
+                    # Convert timestamp string (e.g. "1:02:45" or "2:34") → total seconds
+                    if ts:
+                        try:
+                            parts = [int(p) for p in ts.replace(" ", "").split(":")]
+                            if len(parts) == 3:   # H:MM:SS
+                                t_seconds = parts[0] * 3600 + parts[1] * 60 + parts[2]
+                            elif len(parts) == 2:  # M:SS
+                                t_seconds = parts[0] * 60 + parts[1]
+                            else:                  # bare seconds
+                                t_seconds = parts[0]
+                            separator = "&" if "?" in url else "?"
+                            watch_url = f"{url}{separator}t={t_seconds}"
+                        except (ValueError, IndexError):
+                            pass  # malformed timestamp — fall back to plain URL
 
                 # Tags HTML (max 3 tags for clean header)
                 tags_html = " ".join([
@@ -170,7 +185,7 @@ class EmailSender:
                                     {moment_html}
                                 </td>
                                 <td style="vertical-align: middle; text-align: right;">
-                                    <a href="{url}" target="_blank" style="background-color: #0f172a; color: #ffffff; text-decoration: none; padding: 6px 14px; border-radius: 6px; font-size: 12px; font-weight: 600; display: inline-block;">
+                                    <a href="{watch_url}" target="_blank" style="background-color: #0f172a; color: #ffffff; text-decoration: none; padding: 6px 14px; border-radius: 6px; font-size: 12px; font-weight: 600; display: inline-block;">
                                         ▶ Watch on YouTube
                                     </a>
                                 </td>
