@@ -1,0 +1,13 @@
+.git
+.gitignore
+README.md
+deployment/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.coverage
+htmlcov/
+*.log
+state.json
+history.json
+digest_preview.html
