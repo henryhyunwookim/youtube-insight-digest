@@ -9,50 +9,56 @@ Purpose:
 
 from __future__ import annotations
 
+import base64
+import json
 import os
 import subprocess
 import sys
+import time
+import urllib.request
 from pathlib import Path
 from dotenv import load_dotenv
 
 # Base directory for resolving relative files
 BASE_DIR: Path = Path(__file__).resolve().parent.parent
 
-# Load local environment variables from .env file if present (for optional local overrides)
-load_dotenv(dotenv_path=BASE_DIR / ".env")
+# Optional local environment overrides if present
+if (BASE_DIR / ".env").exists():
+    load_dotenv(dotenv_path=BASE_DIR / ".env")
 
 
 def get_gcp_project_id() -> str:
     """
-    Resolves the Google Cloud Project ID from environment or ADC/gcloud CLI.
+    Resolves the Google Cloud Project ID from environment, gcloud CLI, or ADC.
     """
     pid = os.getenv("GCP_PROJECT_ID") or os.getenv("GOOGLE_CLOUD_PROJECT")
     if pid:
         return pid.strip()
 
-    # Attempt resolution via google-auth ADC
+    # When running locally, gcloud CLI config is the fastest and primary source of truth
+    if not os.getenv("K_SERVICE"):
+        try:
+            is_win = sys.platform == "win32"
+            res = subprocess.run(
+                ["gcloud", "config", "get-value", "project"],
+                capture_output=True,
+                text=True,
+                check=True,
+                timeout=15,
+                shell=is_win
+            )
+            val = res.stdout.strip()
+            if val and "(unset)" not in val:
+                return val
+        except Exception:
+            pass
+
+    # Attempt resolution via google-auth ADC / Cloud Run metadata service
     try:
         import google.auth
         _, auth_project = google.auth.default()
         if auth_project:
             return auth_project.strip()
-    except Exception:
-        pass
-
-    # Attempt resolution via gcloud CLI
-    try:
-        is_win = sys.platform == "win32"
-        res = subprocess.run(
-            ["gcloud", "config", "get-value", "project"],
-            capture_output=True,
-            text=True,
-            check=True,
-            timeout=8,
-            shell=is_win
-        )
-        val = res.stdout.strip()
-        if val and "(unset)" not in val:
-            return val
     except Exception:
         pass
 
@@ -75,28 +81,104 @@ GCS_BUCKET_NAME: str = os.getenv(
 
 
 # ===========================================================================
-# 2. Secret Manager Resolution (Dual-Mode Fallback)
+# 2. Secret Manager Resolution (Fast Multi-Mode with In-Memory Caching)
 # ===========================================================================
+_SECRETS_CACHE: dict[str, str] = {}
+_CACHED_GCLOUD_TOKEN: str | None = None
+_CACHED_TOKEN_EXPIRY: float = 0.0
+
+
+def get_gcloud_access_token() -> str | None:
+    """
+    Retrieves and caches an OAuth 2.0 access token via gcloud CLI.
+    Cached in-memory for 50 minutes to eliminate repeated subprocess overhead.
+    """
+    global _CACHED_GCLOUD_TOKEN, _CACHED_TOKEN_EXPIRY
+    now = time.time()
+    if _CACHED_GCLOUD_TOKEN and now < _CACHED_TOKEN_EXPIRY:
+        return _CACHED_GCLOUD_TOKEN
+
+    try:
+        is_win = sys.platform == "win32"
+        res = subprocess.run(
+            ["gcloud", "auth", "print-access-token"],
+            capture_output=True,
+            text=True,
+            check=True,
+            timeout=25,
+            shell=is_win
+        )
+        token = res.stdout.strip()
+        if token and not token.startswith("ERROR"):
+            _CACHED_GCLOUD_TOKEN = token
+            _CACHED_TOKEN_EXPIRY = now + 3000.0  # 50 minutes
+            return token
+    except Exception:
+        pass
+    return None
+
+
 def resolve_cloud_secret(secret_id: str, project_id: str | None = None) -> str | None:
     """
-    Resolves a secret from GCP Secret Manager via SDK, falling back to gcloud CLI.
+    Resolves a secret from GCP Secret Manager via:
+      1. In-memory cache (_SECRETS_CACHE)
+      2. Cloud Run native environment / SDK (if K_SERVICE is set)
+      3. Fast Secret Manager REST API with cached gcloud access token (for local execution)
+      4. Standard Secret Manager SDK (with quota project)
+      5. Direct gcloud CLI fallback with generous timeout
     """
     target_project = project_id or GCP_PROJECT_ID
     if not target_project or not secret_id:
         return None
 
-    # Method 1: Google Cloud Secret Manager SDK
-    try:
-        from google.cloud import secretmanager
+    cache_key = f"{target_project}:{secret_id}"
+    if cache_key in _SECRETS_CACHE:
+        return _SECRETS_CACHE[cache_key]
 
-        client = secretmanager.SecretManagerServiceClient()
+    # Mode A: If running in Cloud Run, use the native SDK immediately
+    if os.getenv("K_SERVICE"):
+        try:
+            from google.cloud import secretmanager
+            client = secretmanager.SecretManagerServiceClient()
+            name = f"projects/{target_project}/secrets/{secret_id}/versions/latest"
+            response = client.access_secret_version(request={"name": name}, timeout=5.0)
+            val = response.payload.data.decode("utf-8").strip()
+            _SECRETS_CACHE[cache_key] = val
+            return val
+        except Exception:
+            pass
+
+    # Mode B: When running locally, use cached gcloud access token + REST API
+    # This avoids gRPC ADC invalid_grant errors and runs in ~0.3s per secret!
+    token = get_gcloud_access_token()
+    if token:
+        try:
+            url = f"https://secretmanager.googleapis.com/v1/projects/{target_project}/secrets/{secret_id}/versions/latest:access"
+            req = urllib.request.Request(url, headers={"Authorization": f"Bearer {token}"})
+            with urllib.request.urlopen(req, timeout=10) as response:
+                data = json.loads(response.read().decode("utf-8"))
+                val = base64.b64decode(data["payload"]["data"]).decode("utf-8").strip()
+                _SECRETS_CACHE[cache_key] = val
+                return val
+        except Exception:
+            pass
+
+    # Mode C: Secret Manager Python SDK (with quota_project_id)
+    try:
+        from google.api_core.client_options import ClientOptions
+        from google.cloud import secretmanager
+        client = secretmanager.SecretManagerServiceClient(
+            client_options=ClientOptions(quota_project_id=target_project)
+        )
         name = f"projects/{target_project}/secrets/{secret_id}/versions/latest"
-        response = client.access_secret_version(request={"name": name})
-        return response.payload.data.decode("utf-8").strip()
+        response = client.access_secret_version(request={"name": name}, timeout=8.0)
+        val = response.payload.data.decode("utf-8").strip()
+        _SECRETS_CACHE[cache_key] = val
+        return val
     except Exception:
         pass
 
-    # Method 2: gcloud CLI fallback (works on any PC logged in via gcloud auth login)
+    # Mode D: gcloud CLI fallback with generous 30s timeout
     try:
         is_win = sys.platform == "win32"
         cmd = [
@@ -113,10 +195,13 @@ def resolve_cloud_secret(secret_id: str, project_id: str | None = None) -> str |
             capture_output=True,
             text=True,
             check=True,
-            timeout=10,
+            timeout=30,
             shell=is_win
         )
-        return res.stdout.strip()
+        val = res.stdout.strip()
+        if val:
+            _SECRETS_CACHE[cache_key] = val
+            return val
     except Exception:
         pass
 

@@ -12,7 +12,9 @@ import base64
 from datetime import datetime
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
+import re
 from typing import Any
+import urllib.parse
 
 from google.oauth2.credentials import Credentials
 from googleapiclient.discovery import build
@@ -20,6 +22,91 @@ from googleapiclient.errors import HttpError
 
 from src.auth import authenticate_gmail
 from src.config import RECIPIENT_EMAIL, RECIPIENT_NAME
+
+
+def parse_timestamp_to_seconds(ts_str: Any) -> int | None:
+    """
+    Robustly parses a timestamp string or numeric value into total seconds.
+
+    Handles formats such as:
+        - "[04:15]", "[1:04:15]", "(04:15)", "04:15", "1:04:15"
+        - Time ranges like "[04:15 - 05:30]" (extracts starting second)
+        - Unit notations like "4m15s", "1h20m30s", "85s"
+        - Embedded timestamps like "[04:15] Architecture Walkthrough"
+        - Bare integers or floats
+    """
+    if ts_str is None:
+        return None
+    if isinstance(ts_str, (int, float)):
+        return int(ts_str) if ts_str > 0 else None
+
+    ts_str = str(ts_str).strip()
+    if not ts_str:
+        return None
+
+    # Check for HH:MM:SS or MM:SS (e.g. [01:23:45], [04:15], 04:15, 4:15)
+    colon_match = re.search(r'(?:(\d{1,2}):)?(\d{1,2}):(\d{2})', ts_str)
+    if colon_match:
+        h_str, m_str, s_str = colon_match.groups()
+        hours = int(h_str) if h_str else 0
+        minutes = int(m_str)
+        seconds = int(s_str)
+        return hours * 3600 + minutes * 60 + seconds
+
+    # Check for human units like 1h20m30s, 4m15s, 85s
+    hms_match = re.search(
+        r'(?:(\d+)\s*h(?:ours?)?)?\s*(?:(\d+)\s*m(?:in(?:ute)?s?)?)?\s*(?:(\d+)\s*s(?:ec(?:ond)?s?)?)?',
+        ts_str,
+        re.IGNORECASE
+    )
+    if hms_match and any(hms_match.groups()):
+        h_val, m_val, s_val = hms_match.groups()
+        if h_val or m_val or s_val:
+            total = (int(h_val) if h_val else 0) * 3600 + (int(m_val) if m_val else 0) * 60 + (int(s_val) if s_val else 0)
+            if total > 0:
+                return total
+
+    # Check for bare number
+    digit_match = re.search(r'^\d+$', ts_str)
+    if digit_match:
+        total = int(ts_str)
+        return total if total > 0 else None
+
+    return None
+
+
+def format_seconds_display(seconds: int) -> str:
+    """
+    Formats total seconds into MM:SS or HH:MM:SS.
+    """
+    hours = seconds // 3600
+    minutes = (seconds % 3600) // 60
+    secs = seconds % 60
+    if hours > 0:
+        return f"{hours:02d}:{minutes:02d}:{secs:02d}"
+    return f"{minutes:02d}:{secs:02d}"
+
+
+def build_youtube_timestamp_url(url: str, seconds: int | None) -> str:
+    """
+    Safely appends or updates the timestamp parameter 't' in a YouTube URL.
+    Works for standard watch URLs and youtu.be shortlinks.
+    """
+    if not url or url == "#" or seconds is None or seconds <= 0:
+        return url
+
+    parsed = urllib.parse.urlparse(url)
+    query_params = urllib.parse.parse_qs(parsed.query, keep_blank_values=True)
+    query_params["t"] = [f"{int(seconds)}s"]
+    new_query = urllib.parse.urlencode(query_params, doseq=True)
+    return urllib.parse.urlunparse((
+        parsed.scheme,
+        parsed.netloc,
+        parsed.path,
+        parsed.params,
+        new_query,
+        parsed.fragment
+    ))
 
 
 class EmailSender:
@@ -103,28 +190,38 @@ class EmailSender:
                 watch_url = url  # default: start from beginning
                 if moments:
                     m = moments[0]
-                    ts = m.get("timestamp", "")
-                    note = m.get("note", "")
-                    if ts or note:
+                    if isinstance(m, dict):
+                        raw_ts = str(m.get("timestamp") or "").strip()
+                        raw_note = str(m.get("note") or "").strip()
+                    elif isinstance(m, str):
+                        raw_ts = m.strip()
+                        raw_note = ""
+                    else:
+                        raw_ts = ""
+                        raw_note = ""
+
+                    # Parse timestamp to seconds from timestamp field or fallback to note field
+                    t_seconds = parse_timestamp_to_seconds(raw_ts) or parse_timestamp_to_seconds(raw_note)
+
+                    if t_seconds is not None and t_seconds > 0:
+                        watch_url = build_youtube_timestamp_url(url, t_seconds)
+                        display_ts = f"[{format_seconds_display(t_seconds)}]"
+                    else:
+                        display_ts = raw_ts
+
+                    # Clean up note if it repeated the timestamp
+                    clean_note = raw_note
+                    if display_ts and clean_note.startswith(display_ts):
+                        clean_note = clean_note[len(display_ts):].strip()
+                    elif raw_ts and clean_note.startswith(raw_ts):
+                        clean_note = clean_note[len(raw_ts):].strip()
+
+                    if display_ts or clean_note:
                         moment_html = f"""
-                        <div style="display: inline-block; background-color: #f1f5f9; border: 1px solid #e2e8f0; padding: 4px 9px; border-radius: 6px; font-size: 11.5px; color: #334155;">
-                            <strong style="color: #2563eb;">{ts}</strong> {note}
-                        </div>
+                        <a href="{watch_url}" target="_blank" style="text-decoration: none; display: inline-block; background-color: #eff6ff; border: 1px solid #bfdbfe; padding: 4px 10px; border-radius: 6px; font-size: 11.5px; color: #1e3a8a;">
+                            <strong style="color: #2563eb;">{display_ts}</strong> {clean_note}
+                        </a>
                         """
-                    # Convert timestamp string (e.g. "1:02:45" or "2:34") → total seconds
-                    if ts:
-                        try:
-                            parts = [int(p) for p in ts.replace(" ", "").split(":")]
-                            if len(parts) == 3:   # H:MM:SS
-                                t_seconds = parts[0] * 3600 + parts[1] * 60 + parts[2]
-                            elif len(parts) == 2:  # M:SS
-                                t_seconds = parts[0] * 60 + parts[1]
-                            else:                  # bare seconds
-                                t_seconds = parts[0]
-                            separator = "&" if "?" in url else "?"
-                            watch_url = f"{url}{separator}t={t_seconds}"
-                        except (ValueError, IndexError):
-                            pass  # malformed timestamp — fall back to plain URL
 
                 # Tags HTML (max 3 tags for clean header)
                 tags_html = " ".join([
@@ -314,7 +411,17 @@ class EmailSender:
                 plain_text += f"Takeaway: {s.get('actionable_takeaways')[0]}\n"
             if s.get("notable_moments"):
                 m_info = s.get("notable_moments")[0]
-                plain_text += f"Key Moment: {m_info.get('timestamp', '')} {m_info.get('note', '')}\n"
+                if isinstance(m_info, dict):
+                    m_ts = str(m_info.get("timestamp") or "").strip()
+                    m_note = str(m_info.get("note") or "").strip()
+                else:
+                    m_ts = str(m_info).strip()
+                    m_note = ""
+                m_sec = parse_timestamp_to_seconds(m_ts) or parse_timestamp_to_seconds(m_note)
+                m_url = build_youtube_timestamp_url(m.get("url", ""), m_sec) if m_sec is not None else m.get("url", "")
+                plain_text += f"Key Moment: {m_ts} {m_note}\n"
+                if m_sec is not None:
+                    plain_text += f"Direct Moment Link: {m_url}\n"
             plain_text += "\n"
 
         plain_text += "\nSent automatically by YouTube Insight Digest."

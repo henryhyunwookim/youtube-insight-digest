@@ -127,7 +127,6 @@ youtube-insight-digest/
 ├── Dockerfile                 # Production container image (zero baked secrets)
 ├── run_digest.bat             # Windows one-click execution & task scheduler batch file
 ├── README.md                  # Project documentation & operational reference
-├── .env.example               # Environment variables template (optional local overrides)
 ├── .gitignore                 # Excludes secrets, tokens, local states, and caches
 ├── .gcloudignore              # Cloud Build packaging ignore rules
 ├── deployment/

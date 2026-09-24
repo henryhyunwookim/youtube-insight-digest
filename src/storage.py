@@ -58,7 +58,47 @@ def load_cloud_state() -> dict[str, Any]:
     bucket_name, state_blob, _ = get_gcs_config()
     state_cache, _ = get_local_temp_cache_paths()
 
-    # 1. Google Cloud Storage SDK
+    # 1. In Cloud Run, use Google Cloud Storage SDK directly
+    if os.getenv("K_SERVICE"):
+        try:
+            from google.cloud import storage
+
+            client = storage.Client()
+            bucket = client.bucket(bucket_name)
+            blob = bucket.blob(state_blob)
+            if blob.exists():
+                content = blob.download_as_text(encoding="utf-8")
+                data = json.loads(content)
+                if isinstance(data, dict):
+                    return data
+        except Exception:
+            pass
+
+    # 2. When running locally, use fast REST API via cached gcloud access token
+    try:
+        from src.config import get_gcloud_access_token
+        import urllib.parse
+        import urllib.request
+
+        token = get_gcloud_access_token()
+        if token:
+            encoded_blob = urllib.parse.quote(state_blob, safe="")
+            url = f"https://storage.googleapis.com/storage/v1/b/{bucket_name}/o/{encoded_blob}?alt=media"
+            req = urllib.request.Request(url, headers={"Authorization": f"Bearer {token}"})
+            with urllib.request.urlopen(req, timeout=10) as resp:
+                content = resp.read().decode("utf-8")
+                data = json.loads(content)
+                if isinstance(data, dict):
+                    try:
+                        with open(state_cache, "w", encoding="utf-8") as tf:
+                            tf.write(content)
+                    except Exception:
+                        pass
+                    return data
+    except Exception:
+        pass
+
+    # 3. Google Cloud Storage SDK fallback
     try:
         from google.cloud import storage
 
@@ -69,7 +109,6 @@ def load_cloud_state() -> dict[str, Any]:
             content = blob.download_as_text(encoding="utf-8")
             data = json.loads(content)
             if isinstance(data, dict):
-                # Sync to temp cache for offline resilience
                 try:
                     with open(state_cache, "w", encoding="utf-8") as tf:
                         tf.write(content)
@@ -79,7 +118,7 @@ def load_cloud_state() -> dict[str, Any]:
     except Exception:
         pass
 
-    # 2. Authenticated gcloud CLI fallback
+    # 4. Authenticated gcloud CLI fallback
     try:
         is_win = sys.platform == "win32"
         cmd = ["gcloud", "storage", "cat", f"gs://{bucket_name}/{state_blob}"]
@@ -88,7 +127,7 @@ def load_cloud_state() -> dict[str, Any]:
             capture_output=True,
             text=True,
             check=True,
-            timeout=12,
+            timeout=25,
             shell=is_win
         )
         if res.stdout:
@@ -103,7 +142,7 @@ def load_cloud_state() -> dict[str, Any]:
     except Exception:
         pass
 
-    # 3. Local OS temp cache fallback
+    # 5. Local OS temp cache fallback
     if os.path.exists(state_cache):
         try:
             with open(state_cache, "r", encoding="utf-8") as f:
@@ -133,7 +172,41 @@ def save_cloud_state(state: dict[str, Any]) -> bool:
     except Exception as exc:
         print(f"[Storage] Warning: Failed writing to temp cache: {exc}")
 
-    # 2. Upload to GCS via SDK
+    # 2. In Cloud Run, use SDK directly
+    if os.getenv("K_SERVICE"):
+        try:
+            from google.cloud import storage
+
+            client = storage.Client()
+            bucket = client.bucket(bucket_name)
+            blob = bucket.blob(state_blob)
+            blob.upload_from_string(data_str, content_type="application/json")
+            return True
+        except Exception:
+            pass
+
+    # 3. Fast REST upload using cached gcloud token (local run)
+    try:
+        from src.config import get_gcloud_access_token
+        token = get_gcloud_access_token()
+        if token:
+            import urllib.parse
+            import urllib.request
+            encoded_blob = urllib.parse.quote(state_blob, safe="")
+            url = f"https://storage.googleapis.com/upload/storage/v1/b/{bucket_name}/o?uploadType=media&name={encoded_blob}"
+            req = urllib.request.Request(
+                url,
+                data=data_str.encode("utf-8"),
+                headers={"Authorization": f"Bearer {token}", "Content-Type": "application/json"},
+                method="POST"
+            )
+            with urllib.request.urlopen(req, timeout=12) as resp:
+                if resp.status in (200, 201):
+                    return True
+    except Exception:
+        pass
+
+    # 4. Upload to GCS via SDK fallback
     try:
         from google.cloud import storage
 
@@ -145,7 +218,7 @@ def save_cloud_state(state: dict[str, Any]) -> bool:
     except Exception:
         pass
 
-    # 3. Upload to GCS via gcloud CLI fallback
+    # 5. Upload to GCS via gcloud CLI fallback
     try:
         is_win = sys.platform == "win32"
         cmd = [
@@ -158,7 +231,7 @@ def save_cloud_state(state: dict[str, Any]) -> bool:
             capture_output=True,
             text=True,
             check=True,
-            timeout=15,
+            timeout=30,
             shell=is_win
         )
         return res.returncode == 0
@@ -222,7 +295,7 @@ def log_execution(
                 capture_output=True,
                 text=True,
                 check=True,
-                timeout=10,
+                timeout=25,
                 shell=is_win
             )
             if res.stdout:
@@ -271,7 +344,7 @@ def log_execution(
             capture_output=True,
             text=True,
             check=True,
-            timeout=12,
+            timeout=30,
             shell=is_win
         )
     except Exception:

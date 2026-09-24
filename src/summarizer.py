@@ -26,7 +26,7 @@ class VideoSummarizer:
         self.api_key: str | None = api_key or GEMINI_API_KEY
         if not self.api_key:
             raise ValueError(
-                "Gemini API key is required. Please set GEMINI_API_KEY in .env "
+                "Gemini API key is required. Please ensure 'gemini-api-key' is in Secret Manager, "
                 "or pass it to VideoSummarizer(api_key=...)."
             )
 
@@ -85,7 +85,10 @@ CRITICAL: The reader has only 30-45 seconds per video. Eliminate all filler phra
 1. **One-Line Hook (`one_line_hook`)**: A single, punchy sentence capturing the primary breakthrough, architecture shift, or metric (max 25 words).
 2. **Essential Insights (`key_insights`)**: Exactly 2 to 3 ultra-concise bullets (max 25 words each). Highlight hard data, core architectural decisions, or performance gains.
 3. **Actionable Takeaway (`actionable_takeaways`)**: Exactly 1 pragmatic, direct engineering action item or decision rule (max 25 words, e.g., "Adopt X when Y to avoid Z").
-4. **Key Moment (`notable_moments`)**: Maximum 1 pivotal timestamped milestone (format: [MM:SS] with brief context). If none is standout, provide an empty list [].
+4. **Key Moment (`notable_moments`)**: Exactly 1 pivotal timestamped milestone from the video (format: MM:SS or HH:MM:SS with brief context).
+   - Identify the single most important breakthrough, demo, benchmark result, or core architectural revelation timestamp from the transcript (or video chapters if available).
+   - If transcripts are available, this is MANDATORY (do NOT leave empty). Use the exact timestamp where this key topic begins.
+   - If only video description is available and contains timestamps/chapters, use the most relevant chapter. Only return [] if no timestamp information exists in the source material.
 5. **Topics & Tags (`tags`)**: 2 to 4 specific technical tags (e.g., ["LangGraph", "Multi-Agent", "Benchmarking"]).
 
 Respond with ONLY a valid JSON object matching this schema:
@@ -94,7 +97,7 @@ Respond with ONLY a valid JSON object matching this schema:
   "key_insights": ["bullet 1", "bullet 2"],
   "actionable_takeaways": ["takeaway 1"],
   "notable_moments": [
-    {{"timestamp": "[MM:SS]", "note": "brief context"}}
+    {{"timestamp": "MM:SS", "note": "brief context"}}
   ],
   "tags": ["tag1", "tag2", "tag3"]
 }}
@@ -118,12 +121,39 @@ Respond with ONLY a valid JSON object matching this schema:
                 notable_moments = result.get("notable_moments", [])
                 tags = result.get("tags", [])
 
+                # Normalize notable_moments to standard list of dicts
+                normalized_moments: list[dict[str, str]] = []
+                if isinstance(notable_moments, list):
+                    for item in notable_moments:
+                        if isinstance(item, dict):
+                            ts_val = str(item.get("timestamp") or "").strip()
+                            note_val = str(item.get("note") or "").strip()
+                            if ts_val or note_val:
+                                normalized_moments.append({"timestamp": ts_val, "note": note_val})
+                        elif isinstance(item, str) and item.strip():
+                            normalized_moments.append({"timestamp": item.strip(), "note": ""})
+                elif isinstance(notable_moments, dict):
+                    ts_val = str(notable_moments.get("timestamp") or "").strip()
+                    note_val = str(notable_moments.get("note") or "").strip()
+                    if ts_val or note_val:
+                        normalized_moments.append({"timestamp": ts_val, "note": note_val})
+
+                # If no moment was returned by LLM but transcript was available, extract the first key milestone marker
+                if not normalized_moments and has_transcript:
+                    ts_matches = re.findall(r'\[(\d{1,2}:\d{2}(?::\d{2})?)\]\s*([^.\n]+)', content_body)
+                    if ts_matches:
+                        candidate = ts_matches[1] if len(ts_matches) > 1 else ts_matches[0]
+                        normalized_moments.append({
+                            "timestamp": candidate[0],
+                            "note": candidate[1].strip()[:60]
+                        })
+
                 return {
                     "one_line_hook": result.get("one_line_hook", title),
                     "executive_summary": key_insights[:3],
                     "key_insights": key_insights[:3],
                     "actionable_takeaways": actionable_takeaways[:1],
-                    "notable_moments": notable_moments[:1],
+                    "notable_moments": normalized_moments[:1],
                     "tags": tags[:4],
                     "has_transcript": has_transcript,
                     "content_source": content_source
