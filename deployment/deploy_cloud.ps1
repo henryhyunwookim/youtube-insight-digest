@@ -62,7 +62,20 @@ if (Test-Path $envPath) {
     }
 }
 
-$PROJECT_ID = if ($ProjectId) { $ProjectId } elseif ($ENV_GCP_PROJECT_ID) { $ENV_GCP_PROJECT_ID } else { "gen-lang-client-0480639565" }
+$PROJECT_ID = if ($ProjectId) { 
+    $ProjectId 
+} elseif ($ENV_GCP_PROJECT_ID) { 
+    $ENV_GCP_PROJECT_ID 
+} elseif ($env:GOOGLE_CLOUD_PROJECT) {
+    $env:GOOGLE_CLOUD_PROJECT
+} else { 
+    (gcloud config get-value project 2>$null).Trim() 
+}
+
+if (-not $PROJECT_ID -or $PROJECT_ID -eq "(unset)") {
+    Write-Error "GCP Project is not configured. Specify -ProjectId or run 'gcloud config set project <ID>'."
+    exit 1
+}
 $REGION = if ($Region) { $Region } elseif ($ENV_GCP_REGION) { $ENV_GCP_REGION } else { "asia-northeast1" }
 $SERVICE_NAME = if ($ServiceName) { $ServiceName } elseif ($ENV_SERVICE_NAME) { $ENV_SERVICE_NAME } else { "youtube-insight-digest" }
 $JOB_NAME = if ($JobName) { $JobName } elseif ($ENV_JOB_NAME) { $ENV_JOB_NAME } else { "youtube-insight-daily-trigger" }

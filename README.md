@@ -163,7 +163,7 @@ py -3.11 -m pip install -r requirements.txt
 # 3. Authenticate with Google Cloud
 gcloud auth login
 gcloud auth application-default login
-gcloud config set project gen-lang-client-0480639565
+gcloud config set project <your-gcp-project-id>
 
 # 4. Run test dry-run immediately (Zero local credentials required!)
 py -3.11 -m src.main --dry-run
@@ -235,7 +235,7 @@ The container image contains **no baked-in secrets or tokens**; it securely reso
 .\deployment\deploy_cloud.ps1
 
 # Or with explicit parameters:
-.\deployment\deploy_cloud.ps1 -ProjectId "gen-lang-client-0480639565" -Region "asia-northeast1" -Schedule "0 12 * * *" -TimeZone "Asia/Tokyo"
+.\deployment\deploy_cloud.ps1 -ProjectId "<your-gcp-project-id>" -Region "asia-northeast1" -Schedule "0 12 * * *" -TimeZone "Asia/Tokyo"
 ```
 
 ### Verification & Logs
