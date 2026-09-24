@@ -55,8 +55,8 @@ This repository is architected for zero-setup execution across multiple workstat
 | **API Keys & Secrets** (`GEMINI_API_KEY`, etc.) | **Google Cloud Secret Manager** | Secure string (`secrets/<id>/versions/latest`) | Python SDK with fallback to `gcloud secrets versions access` |
 | **OAuth Tokens** (`token.json`) | **Google Cloud Secret Manager** | Serialized JSON token with refresh credentials (`youtube-insight-token`) | Auto-fetched when missing; auto-refreshed in-memory and synchronized back to Secret Manager |
 | **OAuth Client IDs** (`credentials.json`) | **Google Cloud Secret Manager** | Raw client secrets JSON (`youtube-insight-credentials`) | Auto-downloaded on demand from Secret Manager only if interactive web login is triggered |
-| **Persistent State / Memory** (`state.json`) | **Google Cloud Storage (GCS)** | `gs://<bucket>/youtube-insight-digest/state.json` | Canonical source of truth; local runs write fallbacks strictly to OS temp dir (`tempfile.gettempdir()`) |
-| **Execution & Audit Logs** (`run_log.json`) | **Google Cloud Storage & Cloud Logging** | `gs://<bucket>/youtube-insight-digest/run_log.json` + `stdout` | Decoupled from state; structured JSON streamed to Cloud Logging on Cloud Run |
+| **Persistent State / Memory** (`state.json`) | **Google Cloud Storage (GCS)** | `gs://<project-id>-monitor-data/youtube-insight-digest/state.json` (`asia-northeast1`) | Canonical source of truth; regional bucket in Tokyo; local runs write fallbacks strictly to OS temp dir (`tempfile.gettempdir()`) |
+| **Execution & Audit Logs** (`run_log.json`) | **Google Cloud Storage & Cloud Logging** | `gs://<project-id>-monitor-data/youtube-insight-digest/run_log.json` + `stdout` | Decoupled from state; structured JSON streamed to Cloud Logging on Cloud Run |
 
 ---
 

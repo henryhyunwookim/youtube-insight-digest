@@ -93,6 +93,17 @@ gcloud config set run/region $REGION
 Write-Host "[Step 2/5] Enabling required APIs (Cloud Run, Cloud Build, Artifact Registry, Cloud Scheduler, Secret Manager, Cloud Storage)..." -ForegroundColor Cyan
 gcloud services enable run.googleapis.com cloudbuild.googleapis.com artifactregistry.googleapis.com cloudscheduler.googleapis.com secretmanager.googleapis.com storage.googleapis.com
 
+# Ensure target Cloud Storage bucket exists in regional location
+$BUCKET_NAME = if ($ENV_GCS_BUCKET_NAME) { $ENV_GCS_BUCKET_NAME } else { "$PROJECT_ID-monitor-data" }
+Write-Host "Ensuring Cloud Storage bucket gs://$BUCKET_NAME exists in $REGION..." -ForegroundColor Cyan
+$bucketCheck = gcloud storage buckets describe "gs://$BUCKET_NAME" 2>&1
+if ($LASTEXITCODE -ne 0) {
+    Write-Host "Creating Cloud Storage bucket gs://$BUCKET_NAME in $REGION..."
+    gcloud storage buckets create "gs://$BUCKET_NAME" --location=$REGION
+} else {
+    Write-Host "Cloud Storage bucket gs://$BUCKET_NAME already exists."
+}
+
 # Step 3: Deploy container from source to Cloud Run
 $repoRoot = (Resolve-Path (Join-Path $PSScriptRoot "..\")).Path
 Set-Location $repoRoot
