@@ -106,6 +106,34 @@ flowchart TD
 
 ---
 
+## 🏛️ Technical & Architectural Decisions
+
+- **Dynamic Zero-Downtime Channel Sync via Google Cloud Storage**:
+  - *Decision*: Decouple the monitored channel registry (`channels.json`) from the container image by resolving it dynamically from `gs://$BUCKET_NAME/youtube-insight-digest/channels.json` on every run, with automatic local fallback.
+  - *Context & Motivation*: Updating, adding, or temporarily disabling monitored YouTube channels in standard serverless setups requires editing source code, rebuilding the container image (`gcloud builds submit`), and redeploying the Cloud Run service, consuming several minutes.
+  - *Rationale & Alternatives Considered*: Ingesting `channels.json` dynamically from GCS allows operators to push channel updates in under 2 seconds (`sync_channels.ps1`) without touching compute instances or risking deployment failures.
+  - *Consequences & Impact*: Zero-downtime instant channel management with resilient offline fallback to local defaults.
+
+- **Self-Contained Executive Briefings over Shallow Bullet Summaries**:
+  - *Decision*: Prompt Gemini 3.8 Flash to structure each video insight into an opening hook, explicit problem context, technical mechanism/takeaways, and actionable advice.
+  - *Context & Motivation*: Generic video summaries generate superficial bullet points (*"discussed AI frameworks and showed a demo"*) that compel the practitioner to watch the entire 45-minute video anyway to extract actual technical value.
+  - *Rationale & Alternatives Considered*: A structured multi-section briefing extracts specific architectural trade-offs, quantitative outcomes, and concrete engineering lessons, empowering senior engineers to fully understand the takeaways in under two minutes without watching the recording.
+  - *Consequences & Impact*: True high-signal executive briefings that deliver complete knowledge transfer without requiring video playback.
+
+- **Quota-Free Hybrid Discovery (Public RSS + `ytInitialData` Scraper Fallback)**:
+  - *Decision*: Ingest new channel uploads via public YouTube channel XML RSS feeds, falling back to lightweight HTML `ytInitialData` extraction when RSS feeds are delayed or throttled.
+  - *Context & Motivation*: The official YouTube Data API v3 enforces restrictive daily quota limits (10,000 units/day; channel list calls consume 100 units each), rapidly depleting quotas across frequent multi-channel scans.
+  - *Rationale & Alternatives Considered*: Public RSS feeds consume zero quota units and require no developer API credentials. The scraper fallback handles intermittent feed latency.
+  - *Consequences & Impact*: Zero API quota consumption and immunity to YouTube Data API daily rate exhaustion.
+
+- **Multi-PC Portability via Secret Manager with Dual-Mode SDK & CLI Fallback**:
+  - *Decision*: Resolve all API keys and OAuth tokens dynamically from Google Cloud Secret Manager at runtime, with automatic fallback from Python SDK ADC to the active `gcloud` CLI session.
+  - *Context & Motivation*: Maintaining local `.env` and `token.json` files across multiple developer workstations (Windows desktop, laptop, Cloud Run container) causes credential drift and git exposure risks.
+  - *Rationale & Alternatives Considered*: Secret Manager acts as the single source of truth. Any machine authenticated with `gcloud` can immediately execute the pipeline with zero local credential files.
+  - *Consequences & Impact*: 100% portable zero-setup development and zero secret files stored in local workspaces.
+
+---
+
 ## 📡 Pre-Configured Channels
 
 | Channel | Handle | Category | Focus & Domain |
