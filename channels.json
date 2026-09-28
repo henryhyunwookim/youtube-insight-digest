@@ -48,5 +48,15 @@
     "category": "AI Podcast & Interviews",
     "badge_color": "#8b5cf6",
     "enabled": true
+  },
+  {
+    "id": "ycombinator",
+    "name": "Y Combinator",
+    "handle": "@ycombinator",
+    "channel_id": "UCcefcZRL2oaA_uBNeo5UOWg",
+    "url": "https://www.youtube.com/@ycombinator",
+    "category": "Startups & Tech Ecosystems",
+    "badge_color": "#ff6600",
+    "enabled": true
   }
 ]

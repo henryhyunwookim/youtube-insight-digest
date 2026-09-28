@@ -7,15 +7,15 @@
 [![Google Cloud Run](https://img.shields.io/badge/Google%20Cloud-Run%20%26%20Scheduler-4285F4.svg)](https://cloud.google.com/run)
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 
-An automated intelligence system that monitors premier YouTube technical channels (**AI Engineer**, **LangChain**, **SuperDataScience**, **AWS Developers**, **How I AI**), extracts video transcripts and metadata, synthesizes executive summaries and strategic insights using **Google Gemini**, and dispatches a responsive HTML digest to your **Gmail** every day at **12:00 PM Japan Standard Time (JST)**.
+An automated intelligence system that monitors premier YouTube technical and startup channels (**AI Engineer**, **LangChain**, **SuperDataScience**, **AWS Developers**, **How I AI**, **Y Combinator**), extracts video transcripts and metadata, synthesizes crystal-clear, self-contained executive briefings using **Google Gemini**, and dispatches a responsive HTML digest to your **Gmail** every day at **12:00 PM Japan Standard Time (JST)**.
 
-Built on a **Cloud-Native, Multi-PC Portable Architecture** using **Google Cloud Secret Manager** and **Google Cloud Storage (GCS)**, eliminating all local secret, token, and state file dependencies.
+Built on a **Cloud-Native, Multi-PC Portable Architecture** using **Google Cloud Secret Manager** and **Google Cloud Storage (GCS)**, featuring **Dynamic Zero-Downtime Channel Sync** and zero local credential or state file dependencies.
 
 ---
 
 ## 📬 Sample Email Digest Preview
 
-Here is an example of the high-signal executive briefing delivered directly to your inbox every day at 12:00 PM JST:
+Here is an example of the high-signal, self-contained intelligence briefing delivered directly to your inbox every day at 12:00 PM JST. Each video card is structured so that you can fully understand the core breakthroughs, context, and lessons learned without needing to watch the video:
 
 <p align="center">
   <img src="docs/images/digest_preview.jpg" alt="YouTube Insight Digest Preview" width="640" style="border-radius: 12px; box-shadow: 0 8px 30px rgba(0,0,0,0.12);" />
@@ -32,12 +32,15 @@ Here is an example of the high-signal executive briefing delivered directly to y
 > `💡 One-Line Hook`
 > **Lyft increased customer resolution rates by 16% and slashed agent deployment from six months to two weeks using LangGraph and LangSmith.**
 >
-> **Executive Summary & Strategic Intelligence:**
-> - Replaced brittle monolithic prompts with a dynamic meta-agent architecture registering domain-specific sub-agents as LangGraph nodes.
-> - Decoupled prompt management via LangSmith Prompt Hub, enabling PMs and ops to ship production agents through simple config updates.
-> - Integrated LangSmith tracing across 200k–300k daily queries to pinpoint tool-call failures and hallucinations in multi-turn customer support interactions.
+> **Context & Problem:**
+> Customer support queries at Lyft were overwhelming human agents, but their initial monolithic LLM prompt was too brittle, hallucinated policies, and took engineering teams months to update for minor edge cases.
 >
-> > **Actionable Takeaway:**
+> **Key Takeaways & What You Need to Know:**
+> - **Modular Multi-Agent Architecture:** Replaced brittle monolithic prompts with a dynamic meta-agent architecture registering domain-specific sub-agents as LangGraph nodes. Each agent owns a single domain (e.g. lost items, fare disputes), preventing cross-domain hallucinations.
+> - **Prompt Decoupling via LangSmith Hub:** Decoupled prompt engineering from application code using LangSmith Prompt Hub. Product managers and operations teams can now update, evaluate, and ship production agent behaviors through config updates in hours instead of weeks.
+> - **Full-Trace Failure Isolation:** Integrated LangSmith distributed tracing across 200k–300k daily queries. This allowed engineering to pinpoint exact tool-call failures, step latency bottlenecks, and retrieval misses in multi-turn interactions.
+>
+> > **Actionable Advice:**
 > > Decouple agent workflows into config-driven LangGraph nodes and centralized prompt hubs to empower domain experts and accelerate deployment cycles.
 >
 > **Key Moment:** `[04:15]` Architecture migration breakdown &bull; `Tags:` `#LangGraph` `#MultiAgent` `#LangSmith`
@@ -55,6 +58,7 @@ This repository is architected for zero-setup execution across multiple workstat
 | **API Keys & Secrets** (`GEMINI_API_KEY`, etc.) | **Google Cloud Secret Manager** | Secure string (`secrets/<id>/versions/latest`) | Python SDK with fallback to `gcloud secrets versions access` |
 | **OAuth Tokens** (`token.json`) | **Google Cloud Secret Manager** | Serialized JSON token with refresh credentials (`youtube-insight-token`) | Auto-fetched when missing; auto-refreshed in-memory and synchronized back to Secret Manager |
 | **OAuth Client IDs** (`credentials.json`) | **Google Cloud Secret Manager** | Raw client secrets JSON (`youtube-insight-credentials`) | Auto-downloaded on demand from Secret Manager only if interactive web login is triggered |
+| **Channel Registry** (`channels.json`) | **Google Cloud Storage (GCS)** | `gs://<project-id>-monitor-data/youtube-insight-digest/channels.json` | Dynamic runtime resolution on Cloud Run with instant local fallback; zero-downtime updates |
 | **Persistent State / Memory** (`state.json`) | **Google Cloud Storage (GCS)** | `gs://<project-id>-monitor-data/youtube-insight-digest/state.json` (`asia-northeast1`) | Canonical source of truth; regional bucket in Tokyo; local runs write fallbacks strictly to OS temp dir (`tempfile.gettempdir()`) |
 | **Execution & Audit Logs** (`run_log.json`) | **Google Cloud Storage & Cloud Logging** | `gs://<project-id>-monitor-data/youtube-insight-digest/run_log.json` + `stdout` | Decoupled from state; structured JSON streamed to Cloud Logging on Cloud Run |
 
@@ -62,6 +66,8 @@ This repository is architected for zero-setup execution across multiple workstat
 
 ## 🌟 Key Highlights
 
+- **Dynamic Zero-Downtime Channel Sync**: Channels can be added, disabled, or updated dynamically in Google Cloud Storage. Cloud Run picks up changes immediately without needing container rebuilds or redeployments.
+- **Crystal-Clear, Context-Rich Briefings**: Unlike generic summaries that produce cryptic bullet points, the Gemini intelligence engine explains the *problem context*, *how the solution works*, and *concrete findings* so you fully grasp the lessons without watching the video.
 - **Multi-PC Portability**: Any machine with `gcloud auth login` can run the pipeline immediately with zero local `.env`, `credentials.json`, or `token.json` files.
 - **Dual-Mode Fallback**: All cloud integrations attempt the Python Google Cloud SDK first, gracefully falling back to authenticated `gcloud` CLI commands.
 - **Zero Workspace Litter**: Local state caching and dry-run preview files default strictly to the OS temporary directory (`tempfile.gettempdir()`), keeping the Git repository completely clean.
@@ -70,7 +76,6 @@ This repository is architected for zero-setup execution across multiple workstat
 - **Direct Timestamp Video Linking**: Key moments dynamically compute second offsets and route the `▶ Watch on YouTube` button directly to the exact point in the video (`?t=...`).
 - **Self-Healing Channel Resolver**: Auto-recovers canonical YouTube channel IDs dynamically from handles/URLs if a configured channel ID fails or returns 404.
 - **Deep Multilingual Transcripts**: Extracts manual or auto-generated video captions with timestamps via `youtube-transcript-api` across English, Japanese, Korean, Chinese, and more.
-- **Gemini Intelligence Engine**: Synthesizes high-signal briefings (one-line hooks, executive summaries, strategic insights, actionable takeaways, timestamped key moments).
 - **Responsive Gmail Digest**: Clean typography, dynamic channel badge pills, embedded thumbnails, and cards optimized for mobile and desktop Gmail clients.
 - **Decoupled Audit Logs**: Structured operational logs are streamed to `stdout` and persisted to Google Cloud Storage.
 
@@ -83,11 +88,11 @@ flowchart TD
     START(["Trigger Pipeline<br/>(CLI / Task Scheduler / Cloud Run)"]) --> CONFIG["Resolve Cloud Config & Secrets<br/>(Secret Manager / ADC)"]
     CONFIG --> GMAIL_AUTH["Resolve Gmail Credentials<br/>(Secret Manager: youtube-insight-token)"]
 
-    GMAIL_AUTH --> STATE_FETCH["Load State from Cloud<br/>(GCS: youtube-insight-digest/state.json)"]
-    STATE_FETCH --> SCAN_CHANNELS["Scan YouTube Channels<br/>(Public RSS + Web Scraper Fallback)"]
+    GMAIL_AUTH --> CLOUD_SYNC["Load State & Dynamic Channels from GCS<br/>(GCS: state.json & channels.json)"]
+    CLOUD_SYNC --> SCAN_CHANNELS["Scan YouTube Channels<br/>(Dynamic GCS Registry + RSS + Scraper Fallback)"]
 
     SCAN_CHANNELS --> EXTRACT_TRANSCRIPT["Extract Multi-Language Transcripts<br/>(youtube-transcript-api)"]
-    EXTRACT_TRANSCRIPT --> GEMINI_SYNTH["Synthesize Insights with Gemini<br/>(Secret Manager: gemini-api-key)"]
+    EXTRACT_TRANSCRIPT --> GEMINI_SYNTH["Synthesize Clear Briefings with Gemini<br/>(Context + Deep Takeaways + Actionable Advice)"]
 
     GEMINI_SYNTH --> DISPATCH_DECISION{"Execution Mode"}
     DISPATCH_DECISION -- "Dry-Run" --> PREVIEW_OUT["Write HTML Preview to OS Temp Dir<br/>(tempfile.gettempdir())"]
@@ -110,11 +115,58 @@ flowchart TD
 | **SuperDataScience** | `@sds-superdatascience` | Data Science | Data science, machine learning models, industry interviews |
 | **AWS Developers** | `@awsdevelopers` | Cloud & Infrastructure | Cloud infrastructure, serverless AI, Amazon Bedrock |
 | **How I AI** | `@howiaipodcast` | AI Podcast & Interviews | AI podcasts, founder interviews, practical AI workflows |
+| **Y Combinator** | `@ycombinator` | Startups & Tech Ecosystems | Startup advice, AI demos, founder insights, tech trends |
 
-> [!TIP]
-> You can add, disable, or customize channels at any time in [`channels.json`](channels.json). The system automatically resolves `@handles` to internal YouTube channel IDs.
->
-> *Note for Cloud Deployments:* Because `channels.json` is packaged into the container image at build time, changes require redeploying the Cloud Run service (`.\deployment\deploy_cloud.ps1`) for the scheduled cloud pipeline to reflect the updates.
+---
+
+## ⚡ Google Cloud Storage (GCS) Dynamic Channel Sync
+
+### The Core Advantage: Zero-Downtime Channel Management
+In standard serverless deployments, modifying a channel list requires editing code, rebuilding the container image (`gcloud builds submit`), and redeploying the service (`gcloud run deploy`), which takes 2–4 minutes.
+
+To eliminate this bottleneck, YouTube Insight Digest features **GCS Dynamic Channel Sync**:
+- **Runtime Lookup**: On every scheduled trigger (e.g. daily at 12:00 PM JST), Cloud Run checks `gs://$BUCKET_NAME/youtube-insight-digest/channels.json` in Google Cloud Storage.
+- **Instant Effect**: When the file exists in GCS, the cloud service immediately executes with that channel list.
+- **Resilient Fallback**: If GCS is temporarily unreachable or unconfigured, Cloud Run automatically falls back to the bundled local [`channels.json`](channels.json).
+
+### How to Update Channels Going Forward
+
+#### Step 1: Update Local [`channels.json`](channels.json)
+Add, edit, or disable any channel entry. For example:
+```json
+{
+  "id": "ycombinator",
+  "name": "Y Combinator",
+  "handle": "@ycombinator",
+  "channel_id": "UCcefcZRL2oaA_uBNeo5UOWg",
+  "url": "https://www.youtube.com/@ycombinator",
+  "category": "Startups & Tech Ecosystems",
+  "badge_color": "#ff6600",
+  "enabled": true
+}
+```
+> [!NOTE]
+> If you don't know the internal YouTube `channel_id`, you can leave it blank (`""`)! The system automatically resolves `@handles` and channel URLs to the canonical YouTube channel ID on first run.
+
+#### Step 2: Push to Cloud Storage (Takes 2 Seconds)
+You can synchronize the new configuration to GCS using any of the following methods:
+
+**Method A: Dedicated PowerShell Script (Recommended for Windows)**
+```powershell
+.\deployment\sync_channels.ps1
+```
+
+**Method B: Python CLI (Cross-Platform)**
+```bash
+py -3.11 -m src.main --sync-channels
+```
+
+**Method C: Direct `gcloud storage` CLI**
+```bash
+gcloud storage cp channels.json gs://<your-project-id>-monitor-data/youtube-insight-digest/channels.json
+```
+
+That's it! Your next scheduled Cloud Run pipeline execution will immediately begin monitoring the new channels with zero container rebuilds or service interruptions.
 
 ---
 
@@ -130,7 +182,8 @@ youtube-insight-digest/
 ├── .gitignore                 # Excludes secrets, tokens, local states, and caches
 ├── .gcloudignore              # Cloud Build packaging ignore rules
 ├── deployment/
-│   └── deploy_cloud.ps1       # Automated Google Cloud Run & Cloud Scheduler deployment script
+│   ├── deploy_cloud.ps1       # Automated Google Cloud Run & Cloud Scheduler deployment script
+│   └── sync_channels.ps1      # Instant zero-downtime channels sync to Cloud Storage
 ├── src/
 │   ├── __init__.py            # Package indicator
 │   ├── app.py                 # Flask web service for Cloud Run / webhook triggers
@@ -138,11 +191,11 @@ youtube-insight-digest/
 │   ├── config.py              # Dynamic Secret Manager resolution & cloud configurations
 │   ├── email_sender.py        # Responsive HTML email builder & Gmail API dispatcher
 │   ├── main.py                # CLI pipeline orchestrator & dry-run runner
-│   ├── storage.py             # Google Cloud Storage state & decoupled audit logging module
+│   ├── storage.py             # Google Cloud Storage state, dynamic channels & audit logging
 │   ├── summarizer.py          # Google Gemini structured synthesis & insight generation
 │   ├── sync_secrets.py        # One-shot secret & state synchronization utility
 │   ├── transcript_fetcher.py  # Subtitle extraction & timestamp alignment
-│   └── youtube_monitor.py     # Channel handle resolver, RSS parser & cloud state integration
+│   └── youtube_monitor.py     # Channel handle resolver, RSS parser & dynamic cloud loading
 ```
 
 ---
@@ -192,15 +245,23 @@ py -3.11 -m src.main --dry-run
 py -3.11 -m src.main
 ```
 
-### Filter by Specific Channel
+### Sync Monitored Channels to Cloud Storage (Zero-Downtime)
+Uploads local `channels.json` directly to GCS so Cloud Run picks up changes immediately:
 ```bash
-py -3.11 -m src.main --channel @LangChain --dry-run
+py -3.11 -m src.main --sync-channels
+# or
+.\deployment\sync_channels.ps1
 ```
 
 ### Establish Clean Baseline State (First Run / New Channels)
 Seeds all current videos across all monitored channels directly into state tracking without synthesizing summaries or dispatching emails. Ensures that newly added channels will only trigger digests for videos released *after* this baseline is created:
 ```bash
 py -3.11 -m src.main --seed-state
+```
+
+### Filter by Specific Channel
+```bash
+py -3.11 -m src.main --channel @ycombinator --dry-run
 ```
 
 ### Custom Lookback Window

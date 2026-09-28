@@ -38,6 +38,14 @@ def get_gcs_config() -> tuple[str, str, str]:
     return bucket, state_blob, log_blob
 
 
+def get_channels_blob_path() -> str:
+    """
+    Returns the GCS blob path for the channels configuration.
+    """
+    from src.config import SERVICE_NAME
+    return f"{SERVICE_NAME}/channels.json"
+
+
 def get_local_temp_cache_paths() -> tuple[str, str]:
     """
     Returns OS temporary file paths used for local fallback caching.
@@ -239,6 +247,167 @@ def save_cloud_state(state: dict[str, Any]) -> bool:
         pass
 
     return True
+
+
+def load_cloud_channels() -> list[dict[str, Any]] | None:
+    """
+    Loads channels configuration directly from Google Cloud Storage.
+    Returns None if the blob does not exist or upon failure, allowing seamless local fallback.
+    """
+    bucket_name, _, _ = get_gcs_config()
+    blob_path = get_channels_blob_path()
+
+    # 1. Cloud Run SDK
+    if os.getenv("K_SERVICE"):
+        try:
+            from google.cloud import storage
+
+            client = storage.Client()
+            bucket = client.bucket(bucket_name)
+            blob = bucket.blob(blob_path)
+            if blob.exists():
+                content = blob.download_as_text(encoding="utf-8")
+                data = json.loads(content)
+                if isinstance(data, list):
+                    return data
+        except Exception:
+            pass
+
+    # 2. Fast REST API via cached gcloud access token (local runs)
+    try:
+        from src.config import get_gcloud_access_token
+        import urllib.parse
+        import urllib.request
+
+        token = get_gcloud_access_token()
+        if token:
+            encoded_blob = urllib.parse.quote(blob_path, safe="")
+            url = f"https://storage.googleapis.com/storage/v1/b/{bucket_name}/o/{encoded_blob}?alt=media"
+            req = urllib.request.Request(url, headers={"Authorization": f"Bearer {token}"})
+            with urllib.request.urlopen(req, timeout=8) as resp:
+                content = resp.read().decode("utf-8")
+                data = json.loads(content)
+                if isinstance(data, list):
+                    return data
+    except Exception:
+        pass
+
+    # 3. Cloud Storage SDK fallback
+    try:
+        from google.cloud import storage
+
+        client = storage.Client()
+        bucket = client.bucket(bucket_name)
+        blob = bucket.blob(blob_path)
+        if blob.exists():
+            content = blob.download_as_text(encoding="utf-8")
+            data = json.loads(content)
+            if isinstance(data, list):
+                return data
+    except Exception:
+        pass
+
+    # 4. Authenticated gcloud CLI fallback
+    try:
+        is_win = sys.platform == "win32"
+        cmd = ["gcloud", "storage", "cat", f"gs://{bucket_name}/{blob_path}"]
+        res = subprocess.run(
+            cmd,
+            capture_output=True,
+            text=True,
+            check=True,
+            timeout=15,
+            shell=is_win
+        )
+        if res.stdout:
+            data = json.loads(res.stdout)
+            if isinstance(data, list):
+                return data
+    except Exception:
+        pass
+
+    return None
+
+
+def save_cloud_channels(channels: list[dict[str, Any]]) -> bool:
+    """
+    Persists channels configuration directly to Google Cloud Storage.
+    Returns True if successfully saved to GCS.
+    """
+    bucket_name, _, _ = get_gcs_config()
+    blob_path = get_channels_blob_path()
+    data_str = json.dumps(channels, ensure_ascii=False, indent=2)
+
+    # 1. Cloud Run SDK
+    if os.getenv("K_SERVICE"):
+        try:
+            from google.cloud import storage
+
+            client = storage.Client()
+            bucket = client.bucket(bucket_name)
+            blob = bucket.blob(blob_path)
+            blob.upload_from_string(data_str, content_type="application/json")
+            return True
+        except Exception:
+            pass
+
+    # 2. REST API with cached token
+    try:
+        from src.config import get_gcloud_access_token
+        token = get_gcloud_access_token()
+        if token:
+            import urllib.parse
+            import urllib.request
+            encoded_blob = urllib.parse.quote(blob_path, safe="")
+            url = f"https://storage.googleapis.com/upload/storage/v1/b/{bucket_name}/o?uploadType=media&name={encoded_blob}"
+            req = urllib.request.Request(
+                url,
+                data=data_str.encode("utf-8"),
+                headers={"Authorization": f"Bearer {token}", "Content-Type": "application/json"},
+                method="POST"
+            )
+            with urllib.request.urlopen(req, timeout=12) as resp:
+                if resp.status in (200, 201):
+                    return True
+    except Exception:
+        pass
+
+    # 3. SDK fallback
+    try:
+        from google.cloud import storage
+
+        client = storage.Client()
+        bucket = client.bucket(bucket_name)
+        blob = bucket.blob(blob_path)
+        blob.upload_from_string(data_str, content_type="application/json")
+        return True
+    except Exception:
+        pass
+
+    # 4. CLI fallback
+    try:
+        temp_channels = os.path.join(tempfile.gettempdir(), "channels_sync.json")
+        with open(temp_channels, "w", encoding="utf-8") as f:
+            f.write(data_str)
+        is_win = sys.platform == "win32"
+        cmd = ["gcloud", "storage", "cp", temp_channels, f"gs://{bucket_name}/{blob_path}"]
+        res = subprocess.run(
+            cmd,
+            capture_output=True,
+            text=True,
+            check=True,
+            timeout=25,
+            shell=is_win
+        )
+        try:
+            os.remove(temp_channels)
+        except Exception:
+            pass
+        return res.returncode == 0
+    except Exception:
+        pass
+
+    return False
 
 
 def log_execution(

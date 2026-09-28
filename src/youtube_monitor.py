@@ -26,10 +26,23 @@ from src.storage import load_cloud_state, save_cloud_state
 _RESOLVED_CHANNEL_CACHE: dict[str, str] = {}
 
 
-def load_channels() -> list[dict[str, Any]]:
+def load_channels(use_cloud: bool = True) -> list[dict[str, Any]]:
     """
-    Loads monitored channels configuration from channels.json.
+    Loads monitored channels configuration.
+    Priority:
+      1. Dynamic cloud configuration from GCS (gs://$BUCKET/$SERVICE/channels.json)
+      2. Local channels.json fallback
     """
+    if use_cloud:
+        try:
+            from src.storage import load_cloud_channels
+            cloud_channels = load_cloud_channels()
+            if cloud_channels and isinstance(cloud_channels, list):
+                print(f"[Monitor] Loaded {len(cloud_channels)} channels from Google Cloud Storage.")
+                return [c for c in cloud_channels if c.get("enabled", True)]
+        except Exception as exc:
+            print(f"[Monitor] Cloud channels lookup fallback ({exc}). Loading local channels.json.")
+
     if not CHANNELS_FILE.exists():
         print(f"[Monitor] Warning: '{CHANNELS_FILE}' not found. Returning empty channel list.")
         return []
@@ -41,6 +54,28 @@ def load_channels() -> list[dict[str, Any]]:
     except Exception as exc:
         print(f"[Monitor] Error loading channels: {exc}")
         return []
+
+
+def sync_channels_to_cloud() -> bool:
+    """
+    Syncs the local channels.json to GCS so Cloud Run picks up channel updates immediately.
+    """
+    if not CHANNELS_FILE.exists():
+        print(f"[Storage] Error: '{CHANNELS_FILE}' not found.")
+        return False
+    try:
+        with open(CHANNELS_FILE, "r", encoding="utf-8") as f:
+            channels = json.load(f)
+        from src.storage import save_cloud_channels
+        success = save_cloud_channels(channels)
+        if success:
+            print(f"[Storage] Successfully synced {len(channels)} channels to Google Cloud Storage!")
+        else:
+            print("[Storage] Warning: Failed to sync channels to Google Cloud Storage.")
+        return success
+    except Exception as exc:
+        print(f"[Storage] Error syncing channels: {exc}")
+        return False
 
 
 def load_state() -> dict[str, Any]:

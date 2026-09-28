@@ -58,6 +58,7 @@ from src.youtube_monitor import (
     save_state,
     load_state,
     load_channels,
+    sync_channels_to_cloud,
     resolve_channel_id,
     fetch_channel_rss,
     fetch_channel_web_videos
@@ -319,6 +320,11 @@ def main() -> None:
         action="store_true",
         help="Seed all current videos across monitored channels into state tracking to establish a clean baseline."
     )
+    parser.add_argument(
+        "--sync-channels",
+        action="store_true",
+        help="Sync local channels.json directly to Google Cloud Storage without redeploying Cloud Run."
+    )
 
     args = parser.parse_args()
 
@@ -327,6 +333,11 @@ def main() -> None:
         authenticate_gmail()
         print("[CLI] Authentication complete. You may now run the pipeline.")
         sys.exit(0)
+
+    if args.sync_channels:
+        print("[CLI] Syncing channels.json to Google Cloud Storage...")
+        success = sync_channels_to_cloud()
+        sys.exit(0 if success else 1)
 
     if args.seed_state:
         seed_baseline_state()

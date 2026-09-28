@@ -65,9 +65,13 @@ class VideoSummarizer:
             content_source = "VIDEO_DESCRIPTION_ONLY"
             content_body = description[:15000]
 
-        prompt = f"""You are a distinguished Principal AI Architect and Technology Intelligence Analyst.
+        prompt = f"""You are an expert technical intelligence analyst and clear communicator.
 Analyze the following YouTube video released by '{author}' in the '{category}' domain.
-Synthesize its contents into a razor-sharp, dense, high-signal intelligence briefing for an executive technical audience.
+Your goal is to make the video's core ideas, technical breakthroughs, or startup advice crystal clear and easy to understand for someone who has NOT watched the video.
+
+CRITICAL REQUIREMENT (CLARITY, CONTEXT & DEPTH):
+Do NOT write ultra-short, jargon-heavy fragments or vague teasers that leave the reader guessing.
+Instead, explain WHAT was discussed, WHY it matters, and HOW it works in plain, engaging, and precise language. A reader should be able to fully understand the key insights, technical architecture, or strategic lessons without needing to watch the video.
 
 ### Video Information:
 - **Title**: {title}
@@ -79,23 +83,29 @@ Synthesize its contents into a razor-sharp, dense, high-signal intelligence brie
 ### Source Material:
 {content_body}
 
-### Analysis Requirements (STRICT BREVITY & DENSITY):
-CRITICAL: The reader has only 30-45 seconds per video. Eliminate all filler phrases, background fluff, and obvious generic commentary. Prioritize concrete numbers, architectural patterns, benchmarks, and real-world results.
-
-1. **One-Line Hook (`one_line_hook`)**: A single, punchy sentence capturing the primary breakthrough, architecture shift, or metric (max 25 words).
-2. **Essential Insights (`key_insights`)**: Exactly 2 to 3 ultra-concise bullets (max 25 words each). Highlight hard data, core architectural decisions, or performance gains.
-3. **Actionable Takeaway (`actionable_takeaways`)**: Exactly 1 pragmatic, direct engineering action item or decision rule (max 25 words, e.g., "Adopt X when Y to avoid Z").
-4. **Key Moment (`notable_moments`)**: Exactly 1 pivotal timestamped milestone from the video (format: MM:SS or HH:MM:SS with brief context).
+### Analysis Structure:
+1. **One-Line Hook (`one_line_hook`)**: A compelling, accessible sentence summarizing the big idea, breakthrough, or theme of the video.
+2. **Context & Problem (`context_and_problem`)**: 1 to 2 clear sentences explaining the background: what problem or question does this video tackle, and why is it important right now?
+3. **Key Insights (`key_insights`)**: Exactly 3 well-explained points. For each point:
+   - Provide a bold, punchy `title` (e.g., "Why Naive RAG Fails at Scale" or "The Co-founder Equity Trap").
+   - Provide a substantive, easy-to-follow `detail` (2 to 4 sentences, ~40-70 words) explaining the mechanism, findings, real-world examples, or evidence shared by the speaker.
+4. **Actionable Takeaways (`actionable_takeaways`)**: Exactly 1 to 2 concrete, practical rules or action items (e.g., "Do X when Y because Z").
+5. **Key Moment (`notable_moments`)**: Exactly 1 pivotal timestamped milestone from the video (format: MM:SS or HH:MM:SS with brief context).
    - Identify the single most important breakthrough, demo, benchmark result, or core architectural revelation timestamp from the transcript (or video chapters if available).
    - If transcripts are available, this is MANDATORY (do NOT leave empty). Use the exact timestamp where this key topic begins.
    - If only video description is available and contains timestamps/chapters, use the most relevant chapter. Only return [] if no timestamp information exists in the source material.
-5. **Topics & Tags (`tags`)**: 2 to 4 specific technical tags (e.g., ["LangGraph", "Multi-Agent", "Benchmarking"]).
+6. **Topics & Tags (`tags`)**: 2 to 4 specific technical or thematic tags (e.g., ["Startups", "Founder Advice", "AI Agents"]).
 
 Respond with ONLY a valid JSON object matching this schema:
 {{
   "one_line_hook": "string",
-  "key_insights": ["bullet 1", "bullet 2"],
-  "actionable_takeaways": ["takeaway 1"],
+  "context_and_problem": "string",
+  "key_insights": [
+    {{"title": "Core Concept / Finding", "detail": "Clear explanation of how it works and what was learned."}},
+    {{"title": "Second Concept / Finding", "detail": "Clear explanation..."}},
+    {{"title": "Third Concept / Finding", "detail": "Clear explanation..."}}
+  ],
+  "actionable_takeaways": ["string"],
   "notable_moments": [
     {{"timestamp": "MM:SS", "note": "brief context"}}
   ],
@@ -117,6 +127,7 @@ Respond with ONLY a valid JSON object matching this schema:
 
                 # Prioritize key_insights; maintain backward-compatible executive_summary fallback
                 key_insights = result.get("key_insights") or result.get("executive_summary", [])
+                context_and_problem = result.get("context_and_problem", "")
                 actionable_takeaways = result.get("actionable_takeaways", [])
                 notable_moments = result.get("notable_moments", [])
                 tags = result.get("tags", [])
@@ -148,11 +159,23 @@ Respond with ONLY a valid JSON object matching this schema:
                             "note": candidate[1].strip()[:60]
                         })
 
+                # Format backward-compatible executive summary list of strings
+                exec_summary_strings: list[str] = []
+                if isinstance(key_insights, list):
+                    for item in key_insights:
+                        if isinstance(item, dict):
+                            t = item.get("title", "").strip()
+                            d = item.get("detail", "").strip()
+                            exec_summary_strings.append(f"{t}: {d}" if t else d)
+                        else:
+                            exec_summary_strings.append(str(item))
+
                 return {
                     "one_line_hook": result.get("one_line_hook", title),
-                    "executive_summary": key_insights[:3],
-                    "key_insights": key_insights[:3],
-                    "actionable_takeaways": actionable_takeaways[:1],
+                    "context_and_problem": context_and_problem,
+                    "key_insights": key_insights[:4],
+                    "executive_summary": exec_summary_strings[:4],
+                    "actionable_takeaways": actionable_takeaways[:2],
                     "notable_moments": normalized_moments[:1],
                     "tags": tags[:4],
                     "has_transcript": has_transcript,

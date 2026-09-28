@@ -165,23 +165,65 @@ class EmailSender:
                 pub_time = meta.get("published_display", "")
 
                 hook = summary.get("one_line_hook", "")
+                context_and_problem = summary.get("context_and_problem", "")
                 exec_bullets = summary.get("executive_summary", [])
                 insights = summary.get("key_insights", [])
                 takeaways = summary.get("actionable_takeaways", [])
                 moments = summary.get("notable_moments", [])
                 tags = summary.get("tags", [])
 
-                # Consolidate bullets for high-density reading (prioritize insights, fallback to exec bullets)
+                # Format key insights with bold concept titles and clear explanations
                 display_bullets = insights if insights else exec_bullets
-                display_bullets = display_bullets[:3]
-                bullets_html = "".join([f"<li style='margin-bottom: 5px; color: #334155; line-height: 1.5;'>{b}</li>" for b in display_bullets])
+                bullets_html = ""
+                for b in display_bullets[:4]:
+                    if isinstance(b, dict):
+                        b_title = b.get("title", "").strip()
+                        b_detail = b.get("detail", "").strip()
+                        if b_title and b_detail:
+                            bullets_html += f"""
+                            <li style="margin-bottom: 10px; color: #334155; line-height: 1.6; font-size: 13.5px;">
+                                <strong style="color: #0f172a;">{b_title}:</strong> {b_detail}
+                            </li>
+                            """
+                        elif b_detail or b_title:
+                            bullets_html += f"""
+                            <li style="margin-bottom: 10px; color: #334155; line-height: 1.6; font-size: 13.5px;">
+                                {b_detail or b_title}
+                            </li>
+                            """
+                    else:
+                        b_str = str(b).strip()
+                        if ":" in b_str and not b_str.startswith("http"):
+                            parts = b_str.split(":", 1)
+                            bullets_html += f"""
+                            <li style="margin-bottom: 10px; color: #334155; line-height: 1.6; font-size: 13.5px;">
+                                <strong style="color: #0f172a;">{parts[0].strip()}:</strong> {parts[1].strip()}
+                            </li>
+                            """
+                        else:
+                            bullets_html += f"""
+                            <li style="margin-bottom: 10px; color: #334155; line-height: 1.6; font-size: 13.5px;">
+                                {b_str}
+                            </li>
+                            """
 
-                # Actionable takeaway (crisp single highlight)
+                # Context & Problem explanation
+                context_html = ""
+                if context_and_problem:
+                    context_html = f"""
+                    <div style="background-color: #f8fafc; border-left: 3px solid #64748b; padding: 10px 14px; border-radius: 0 6px 6px 0; margin-bottom: 14px; font-size: 13px; color: #334155; line-height: 1.55;">
+                        <strong style="color: #0f172a;">Context & Problem:</strong> {context_and_problem}
+                    </div>
+                    """
+
+                # Actionable takeaway (crisp practical guidance)
                 takeaway_html = ""
                 if takeaways:
+                    takeaway_items = "".join([f"<div style='margin-bottom: 4px;'>• {t}</div>" for t in takeaways[:2]]) if len(takeaways) > 1 else f"<span>{takeaways[0]}</span>"
                     takeaway_html = f"""
-                    <div style="background-color: #f0fdf4; border: 1px solid #bbf7d0; border-left: 3px solid #16a34a; border-radius: 6px; padding: 8px 12px; margin-bottom: 14px; font-size: 13px; line-height: 1.45;">
-                        <strong style="color: #166534;">Takeaway:</strong> <span style="color: #1e293b;">{takeaways[0]}</span>
+                    <div style="background-color: #f0fdf4; border: 1px solid #bbf7d0; border-left: 3px solid #16a34a; border-radius: 6px; padding: 10px 14px; margin-bottom: 14px; font-size: 13px; line-height: 1.5;">
+                        <strong style="color: #166534; display: block; margin-bottom: 3px;">Actionable Advice:</strong>
+                        <div style="color: #1e293b;">{takeaway_items}</div>
                     </div>
                     """
 
@@ -262,12 +304,15 @@ class EmailSender:
                         </table>
 
                         <!-- One-Line Hook -->
-                        {f'<div style="background-color: #f8fafc; border-left: 3px solid #3b82f6; padding: 8px 12px; border-radius: 0 6px 6px 0; margin-bottom: 12px; font-size: 13px; font-weight: 600; color: #1e293b; line-height: 1.45;">💡 {hook}</div>' if hook else ''}
+                        {f'<div style="background-color: #f8fafc; border-left: 3px solid #3b82f6; padding: 10px 14px; border-radius: 0 6px 6px 0; margin-bottom: 12px; font-size: 13.5px; font-weight: 600; color: #1e293b; line-height: 1.5;">💡 {hook}</div>' if hook else ''}
 
-                        <!-- Essential Insights (Executive Summary & Strategic Intelligence) -->
-                        <div style="margin-bottom: 12px;">
-                            <span style="font-size: 11px; text-transform: uppercase; font-weight: 700; color: #4338ca; letter-spacing: 0.05em; display: block; margin-bottom: 6px;">Executive Summary & Strategic Intelligence</span>
-                            <ul style="margin: 0; padding-left: 18px; font-size: 13px; line-height: 1.55;">
+                        <!-- Context & Background -->
+                        {context_html}
+
+                        <!-- Core Insights & Key Points -->
+                        <div style="margin-bottom: 14px;">
+                            <span style="font-size: 11px; text-transform: uppercase; font-weight: 700; color: #4338ca; letter-spacing: 0.05em; display: block; margin-bottom: 8px;">Key Takeaways & What You Need to Know</span>
+                            <ul style="margin: 0; padding-left: 18px;">
                                 {bullets_html}
                             </ul>
                         </div>

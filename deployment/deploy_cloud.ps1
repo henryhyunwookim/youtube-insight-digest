@@ -117,8 +117,15 @@ if ($LASTEXITCODE -ne 0) {
     Write-Host "Cloud Storage bucket gs://$BUCKET_NAME already exists."
 }
 
-# Step 3: Deploy container from source to Cloud Run
+# Sync channels.json to GCS for dynamic channel updates
 $repoRoot = (Resolve-Path (Join-Path $PSScriptRoot "..\")).Path
+$channelsPath = Join-Path $repoRoot "channels.json"
+if (Test-Path $channelsPath) {
+    Write-Host "Syncing channels.json to gs://$BUCKET_NAME/$SERVICE_NAME/channels.json..." -ForegroundColor Cyan
+    gcloud storage cp $channelsPath "gs://$BUCKET_NAME/$SERVICE_NAME/channels.json" --quiet
+}
+
+# Step 3: Deploy container from source to Cloud Run
 Set-Location $repoRoot
 
 Write-Host "[Step 3/5] Deploying container from source (.) to Cloud Run..." -ForegroundColor Cyan
