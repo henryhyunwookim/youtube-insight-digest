@@ -272,8 +272,8 @@ SECRET_OAUTH_TOKEN_KEYS: list[str] = [
 ]
 
 SECRET_OAUTH_CREDENTIALS_KEYS: list[str] = [
-    "youtube-insight-credentials",
     "gmail-oauth-credentials",
+    "youtube-insight-credentials",
 ]
 
 
