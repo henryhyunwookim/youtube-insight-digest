@@ -69,6 +69,7 @@ This repository is architected for zero-setup execution across multiple workstat
 - **Dynamic Zero-Downtime Channel Sync**: Channels can be added, disabled, or updated dynamically in Google Cloud Storage. Cloud Run picks up changes immediately without needing container rebuilds or redeployments.
 - **Crystal-Clear, Context-Rich Briefings**: Unlike generic summaries that produce cryptic bullet points, the Gemini intelligence engine explains the *problem context*, *how the solution works*, and *concrete findings* so you fully grasp the lessons without watching the video.
 - **Multi-PC Portability**: Any machine with `gcloud auth login` can run the pipeline immediately with zero local `.env`, `credentials.json`, or `token.json` files.
+- **Strict Secret Manager Cost Hygiene**: Automatically purges superseded token versions whenever OAuth credentials refresh, strictly enforcing single-version retention within the GCP free tier.
 - **Dual-Mode Fallback**: All cloud integrations attempt the Python Google Cloud SDK first, gracefully falling back to authenticated `gcloud` CLI commands.
 - **Zero Workspace Litter**: Local state caching and dry-run preview files default strictly to the OS temporary directory (`tempfile.gettempdir()`), keeping the Git repository completely clean.
 - **Quota-Free & High Reliability**: Monitors channels via public RSS feeds (`feedparser`) with automatic web-scraping fallback (`ytInitialData`) when YouTube throttles feeds.

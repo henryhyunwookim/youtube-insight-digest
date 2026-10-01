@@ -67,13 +67,24 @@ def save_token_to_secret_manager(
                 }
             )
 
-        client.add_secret_version(
+        new_version = client.add_secret_version(
             request={
                 "parent": secret_path,
                 "payload": {"data": token_json_str.encode("utf-8")}
             }
         )
         print(f"[Auth] Successfully saved updated token to Secret Manager '{secret_id}'.")
+
+        # Auto-prune old versions to prevent runaway Secret Manager storage costs
+        try:
+            new_version_id = new_version.name.split("/")[-1]
+            for version in client.list_secret_versions(request={"parent": secret_path}):
+                v_id = version.name.split("/")[-1]
+                if v_id != new_version_id and version.state == secretmanager.SecretVersion.State.ENABLED:
+                    client.destroy_secret_version(request={"name": version.name})
+        except Exception as prune_err:
+            print(f"[Auth] Note: Failed to prune old secret versions: {prune_err}")
+
         return True
     except Exception as sdk_err:
         pass
@@ -100,6 +111,26 @@ def save_token_to_secret_manager(
         )
         if res.returncode == 0:
             print(f"[Auth] Successfully saved updated token to Secret Manager '{secret_id}' via gcloud CLI.")
+
+            # Auto-prune old versions via gcloud CLI
+            try:
+                list_cmd = [
+                    "gcloud", "secrets", "versions", "list", secret_id,
+                    f"--project={target_project}", "--filter=state:ENABLED", "--format=value(name)"
+                ]
+                list_res = subprocess.run(list_cmd, capture_output=True, text=True, shell=is_win)
+                if list_res.returncode == 0:
+                    active_vers = [v.strip().split("/")[-1] for v in list_res.stdout.splitlines() if v.strip()]
+                    if len(active_vers) > 1:
+                        sorted_vers = sorted(active_vers, key=lambda x: int(x) if x.isdigit() else 0, reverse=True)
+                        for old_v in sorted_vers[1:]:
+                            subprocess.run(
+                                ["gcloud", "secrets", "versions", "destroy", old_v, f"--secret={secret_id}", f"--project={target_project}", "--quiet"],
+                                shell=is_win, capture_output=True
+                            )
+            except Exception:
+                pass
+
             return True
     except Exception as cli_err:
         pass
