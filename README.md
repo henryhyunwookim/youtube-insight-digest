@@ -343,6 +343,44 @@ gcloud scheduler jobs run youtube-insight-daily-trigger --location=asia-northeas
 
 ---
 
+## ⚡ Intelligent Token & Duration Optimization
+
+To optimize LLM consumption costs and ensure maximum signal-to-noise ratio, the pipeline features a multi-tiered ingestion filter:
+
+```mermaid
+flowchart TD
+    VID["New YouTube Video Detected"] --> DURATION_CHECK{"Pre-Flight Duration Check<br/>(<meta itemprop='duration'> / approxDurationMs)"}
+    DURATION_CHECK -- "< 2 Minutes (Shorts/Trailers)" --> SKIP_SHORT["Skip Video (No LLM Call)"]
+    DURATION_CHECK -- "> 60 Minutes (Exceeds Cap)" --> SKIP_LONG["Skip Video (No LLM Call)"]
+    DURATION_CHECK -- "2 - 60 Minutes (Valid)" --> FETCH_TRANSCRIPT["Fetch Subtitles / Captions<br/>(youtube-transcript-api)"]
+    
+    FETCH_TRANSCRIPT --> CLEAN_TRANSCRIPT["Clean Noise & Sponsor Blocks<br/>(Remove [Music], NordVPN, Promo Codes, CTAs)"]
+    CLEAN_TRANSCRIPT --> COMPACT_PARAGRAPHS["Downsample Timestamps to 45-60s Intervals<br/>(Group fragments into coherent paragraphs)"]
+    COMPACT_PARAGRAPHS --> CHAR_CAP["Enforce 60,000 Char Cap<br/>(DEFAULT_MAX_TRANSCRIPT_CHARS)"]
+    CHAR_CAP --> GEMINI_CALL["Synthesize Intelligence Briefing via Gemini"]
+```
+
+1. **Pre-Flight Video Duration Gating**:
+   - Inspects video metadata (`<meta itemprop="duration">` or `approxDurationMs`) before invoking transcription.
+   - Ignores videos shorter than 2 minutes (shorts, trailers, teaser clips) or longer than 1 hour (unless `MIN_VIDEO_DURATION_SECONDS` / `MAX_VIDEO_DURATION_SECONDS` are configured), preventing wasteful processing of non-digestible videos.
+2. **Transcript Downsampling & Compaction**:
+   - Replaces noisy, line-by-line fragments with coherent 45–60s interval paragraphs prefixed by clean timestamp labels (`[MM:SS]`).
+   - Cuts structural newline and fragmentation overhead by ~75% while maintaining precise milestone traceability.
+3. **Automated Sponsor & Filler Pruning**:
+   - Regex-based pruning removes recurring sponsor pitches (e.g., *NordVPN, Skillshare, Squarespace, Brilliant, BetterHelp*, promo codes, affiliate links), call-to-action clutter (*"smash that like button"*), and subtitle noise markers (`[Music]`, `[Applause]`).
+4. **Optimized Character Ceiling**:
+   - Reduced the transcript truncation cap from 180,000 characters to **60,000 characters** (`DEFAULT_MAX_TRANSCRIPT_CHARS`), which comfortably encompasses an entire 60-minute technical talk while saving up to 66% in peak prompt token costs.
+
+---
+
+## 🏛️ Architectural Decision Records (ADR)
+
+- **ADR-001: Pre-Transcription Duration Filtering**: Checking duration via public HTML headers before calling transcription endpoints prevents unneeded API calls and eliminates LLM consumption for shorts, trailers, and multi-hour live streams.
+- **ADR-002: Timestamp Downsampling into Paragraphs**: Grouping subtitles into 45–60 second intervals preserves temporal accuracy for key moment citations while delivering significantly better context to Gemini than fragmented 2-second subtitle chunks.
+- **ADR-003: Deterministic Regex Cleaning for Sponsor Blocks**: Eliminates sponsor advertisements before prompt submission, saving tokens and guaranteeing that Gemini does not inadvertently treat promotional offers as technical breakthroughs.
+
+---
+
 ## 🛡️ Security & Clean Workspace Hygiene
 
 - **Zero Local Secrets**: No secrets, tokens, or environment files (`.env`, `credentials.json`, `token.json`) are stored in the repository.

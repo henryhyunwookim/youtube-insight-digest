@@ -50,7 +50,9 @@ from src.config import (
     BASE_DIR,
     TIMEZONE,
     DEFAULT_LOOKBACK_HOURS,
-    RECIPIENT_EMAIL
+    RECIPIENT_EMAIL,
+    MIN_VIDEO_DURATION_SECONDS,
+    MAX_VIDEO_DURATION_SECONDS
 )
 from src.storage import log_execution
 from src.youtube_monitor import (
@@ -63,7 +65,7 @@ from src.youtube_monitor import (
     fetch_channel_rss,
     fetch_channel_web_videos
 )
-from src.transcript_fetcher import fetch_video_transcript
+from src.transcript_fetcher import fetch_video_transcript, get_video_duration_seconds
 from src.summarizer import VideoSummarizer
 from src.email_sender import EmailSender
 
@@ -136,10 +138,34 @@ def run_pipeline(
                 vid_id = vid["video_id"]
                 title = vid["title"]
                 channel = vid["channel_name"]
-                print(f" -> [{idx}/{len(new_videos)}] Extracting transcript: '{title}' ({channel})...")
 
+                # Check video duration before running transcription. Ignore videos shorter than 2 mins or longer than 1 hour
+                duration_sec = get_video_duration_seconds(vid_id)
+                if duration_sec is not None:
+                    duration_mins = round(duration_sec / 60.0, 1)
+                    if duration_sec < MIN_VIDEO_DURATION_SECONDS:
+                        print(f" -> [{idx}/{len(new_videos)}] Skipping '{title}' ({channel}): duration {duration_mins}m < {MIN_VIDEO_DURATION_SECONDS/60:.1f}m (shorts/teaser).")
+                        continue
+                    if duration_sec > MAX_VIDEO_DURATION_SECONDS:
+                        print(f" -> [{idx}/{len(new_videos)}] Skipping '{title}' ({channel}): duration {duration_mins}m > {MAX_VIDEO_DURATION_SECONDS/60:.1f}m (exceeds 1-hour cap).")
+                        continue
+                    print(f" -> [{idx}/{len(new_videos)}] Duration verified: {duration_mins}m ({int(duration_sec)}s)")
+
+                print(f" -> [{idx}/{len(new_videos)}] Extracting transcript: '{title}' ({channel})...")
                 transcript_data = fetch_video_transcript(vid_id)
-                status_ts = f"Yes ({transcript_data.get('duration_estimate_minutes')}m)" if transcript_data.get("has_transcript") else "No (using metadata)"
+
+                # Secondary duration check from transcript metadata if page inspection did not resolve
+                est_mins = transcript_data.get("duration_estimate_minutes", 0.0)
+                if est_mins > 0:
+                    est_sec = est_mins * 60.0
+                    if est_sec < MIN_VIDEO_DURATION_SECONDS:
+                        print(f"    [Skip] Transcript duration {est_mins}m < {MIN_VIDEO_DURATION_SECONDS/60:.1f}m (shorts/teaser).")
+                        continue
+                    if est_sec > MAX_VIDEO_DURATION_SECONDS:
+                        print(f"    [Skip] Transcript duration {est_mins}m > {MAX_VIDEO_DURATION_SECONDS/60:.1f}m (exceeds 1-hour cap).")
+                        continue
+
+                status_ts = f"Yes ({est_mins}m)" if transcript_data.get("has_transcript") else "No (using metadata)"
                 print(f"    Transcript available: {status_ts}")
 
                 print(f"    Synthesizing intelligence briefing with Gemini...")

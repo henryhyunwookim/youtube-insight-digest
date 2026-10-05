@@ -289,3 +289,16 @@ STATE_FILE: Path = BASE_DIR / "state.json"
 # ===========================================================================
 TIMEZONE: str = os.getenv("TIMEZONE", "Asia/Tokyo")
 DEFAULT_LOOKBACK_HOURS: int = int(os.getenv("DEFAULT_LOOKBACK_HOURS", "24"))
+
+# ===========================================================================
+# 7. Video Duration & Transcript Synthesis Controls
+# ===========================================================================
+# Video duration limits (in seconds): Ignore videos shorter than 2 mins (shorts/trailers)
+# or longer than 1 hour (unless explicitly configured).
+MIN_VIDEO_DURATION_SECONDS: int = int(os.getenv("MIN_VIDEO_DURATION_SECONDS", "120"))
+MAX_VIDEO_DURATION_SECONDS: int = int(os.getenv("MAX_VIDEO_DURATION_SECONDS", "3600"))
+
+# Maximum characters passed to Gemini for transcript synthesis.
+# 60,000 characters covers ~1 hour of spoken dialogue (~9,000-10,000 words).
+DEFAULT_MAX_TRANSCRIPT_CHARS: int = int(os.getenv("MAX_TRANSCRIPT_CHARS", "60000"))
+

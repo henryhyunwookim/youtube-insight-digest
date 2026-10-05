@@ -14,7 +14,8 @@ import time
 from typing import Any
 import google.generativeai as genai
 
-from src.config import GEMINI_API_KEY, GEMINI_MODEL
+from src.config import GEMINI_API_KEY, GEMINI_MODEL, DEFAULT_MAX_TRANSCRIPT_CHARS
+from src.transcript_fetcher import clean_transcript_text
 
 
 class VideoSummarizer:
@@ -56,14 +57,14 @@ class VideoSummarizer:
         has_transcript = transcript_data.get("has_transcript", False)
         duration_mins = transcript_data.get("duration_estimate_minutes", 0.0)
 
-        # Use timestamped text if available, capped at ~150,000 characters for optimal latency
+        # Use timestamped text if available, cleaned of sponsor clutter and capped at DEFAULT_MAX_TRANSCRIPT_CHARS (~60k chars / 1h video)
         if has_transcript:
             content_source = "FULL_TRANSCRIPT"
-            content_body = transcript_data.get("timestamped_text") or transcript_data.get("text") or ""
-            content_body = content_body[:180000]
+            raw_body = transcript_data.get("timestamped_text") or transcript_data.get("text") or ""
+            content_body = clean_transcript_text(raw_body)[:DEFAULT_MAX_TRANSCRIPT_CHARS]
         else:
             content_source = "VIDEO_DESCRIPTION_ONLY"
-            content_body = description[:15000]
+            content_body = clean_transcript_text(description)[:15000]
 
         prompt = f"""You are an expert technical intelligence analyst and clear communicator.
 Analyze the following YouTube video released by '{author}' in the '{category}' domain.
