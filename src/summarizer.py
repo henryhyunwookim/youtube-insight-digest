@@ -14,7 +14,7 @@ import time
 from typing import Any
 import google.generativeai as genai
 
-from src.config import GEMINI_API_KEY, GEMINI_MODEL, DEFAULT_MAX_TRANSCRIPT_CHARS
+from src.config import GEMINI_API_KEY, GEMINI_MODEL, DEFAULT_MAX_TRANSCRIPT_CHARS, get_gemini_api_key
 from src.transcript_fetcher import clean_transcript_text
 
 
@@ -24,7 +24,7 @@ class VideoSummarizer:
     """
 
     def __init__(self, api_key: str | None = None, model_name: str | None = None) -> None:
-        self.api_key: str | None = api_key or GEMINI_API_KEY
+        self.api_key: str | None = api_key or GEMINI_API_KEY or get_gemini_api_key()
         if not self.api_key:
             raise ValueError(
                 "Gemini API key is required. Please ensure 'gemini-api-key' is in Secret Manager, "

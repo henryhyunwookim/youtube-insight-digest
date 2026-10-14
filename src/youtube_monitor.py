@@ -229,24 +229,28 @@ def parse_relative_time(time_str: str, now: datetime) -> datetime | None:
         if clean_str.startswith(prefix):
             clean_str = clean_str[len(prefix):].strip()
 
-    # English patterns
-    match_en = re.search(r'(\d+)\s*(second|sec|minute|min|hour|hr|day|week|month|year)', clean_str)
+    # English patterns (including short forms: 7h, 4d, 2w, 3mo, 1y, 30m, 15s)
+    # Note: 'mo'/'month' must be checked before 'm'/'minute' to prevent '3mo' matching 'm'
+    match_en = re.search(
+        r'(\d+)\s*(seconds?|secs?|s|months?|mths?|mo|minutes?|mins?|m|hours?|hrs?|h|days?|d|weeks?|wks?|w|years?|yrs?|y)(?:\s+ago)?\b',
+        clean_str
+    )
     if match_en:
         val = int(match_en.group(1))
         unit = match_en.group(2)
-        if unit.startswith("sec"):
+        if unit in ("seconds", "second", "secs", "sec", "s"):
             return now - timedelta(seconds=val)
-        elif unit.startswith("min"):
-            return now - timedelta(minutes=val)
-        elif unit.startswith("hour") or unit.startswith("hr"):
-            return now - timedelta(hours=val)
-        elif unit.startswith("day"):
-            return now - timedelta(days=val)
-        elif unit.startswith("week"):
-            return now - timedelta(weeks=val)
-        elif unit.startswith("month"):
+        elif unit in ("months", "month", "mths", "mth", "mo"):
             return now - timedelta(days=val * 30)
-        elif unit.startswith("year"):
+        elif unit in ("minutes", "minute", "mins", "min", "m"):
+            return now - timedelta(minutes=val)
+        elif unit in ("hours", "hour", "hrs", "hr", "h"):
+            return now - timedelta(hours=val)
+        elif unit in ("days", "day", "d"):
+            return now - timedelta(days=val)
+        elif unit in ("weeks", "week", "wks", "wk", "w"):
+            return now - timedelta(weeks=val)
+        elif unit in ("years", "year", "yrs", "yr", "y"):
             return now - timedelta(days=val * 365)
 
     # Chinese patterns (Simplified & Traditional)
@@ -315,7 +319,7 @@ def parse_relative_time(time_str: str, now: datetime) -> datetime | None:
     return None
 
 
-def fetch_channel_rss(channel_id: str, max_retries: int = 3) -> list[dict[str, Any]]:
+def fetch_channel_rss(channel_id: str, max_retries: int = 2) -> list[dict[str, Any]]:
     """
     Pulls and parses the public RSS XML feed for a YouTube channel ID
     using browser headers and exponential backoff retries.
@@ -323,15 +327,18 @@ def fetch_channel_rss(channel_id: str, max_retries: int = 3) -> list[dict[str, A
     rss_url = f"https://www.youtube.com/feeds/videos.xml?channel_id={channel_id}"
     for attempt in range(max_retries):
         try:
-            resp = requests.get(rss_url, headers=DEFAULT_REQUEST_HEADERS, timeout=10)
+            resp = requests.get(rss_url, headers=DEFAULT_REQUEST_HEADERS, timeout=8)
             if resp.status_code == 200:
                 feed = feedparser.parse(resp.content)
                 if feed.entries:
                     return feed.entries
-            elif resp.status_code in (404, 429, 500):
+            elif resp.status_code == 404:
+                # YouTube legacy RSS endpoint returning 404; break immediately to trigger web fallback
+                break
+            elif resp.status_code in (429, 500):
                 # Transient YouTube RSS throttling
                 pass
-        except Exception as exc:
+        except Exception:
             pass
 
         if attempt < max_retries - 1:
@@ -396,6 +403,7 @@ def fetch_channel_web_videos(channel_entry: dict[str, Any]) -> list[dict[str, An
             vid_id: str | None = None
             title: str = ""
             time_text: str = ""
+            thumb_url: str | None = None
 
             if item_type == "lockup":
                 vid_id = item.get("contentId")
@@ -404,18 +412,35 @@ def fetch_channel_web_videos(channel_entry: dict[str, Any]) -> list[dict[str, An
                 rows = meta.get("metadata", {}).get("contentMetadataViewModel", {}).get("metadataRows", [])
                 for row in rows:
                     for part in row.get("metadataParts", []):
-                        t = part.get("text", {}).get("content", "")
-                        if any(marker in t.lower() for marker in [
-                            "ago", "前", "전", "streamed", "premiered",
-                            "配信済み", "プレミア公開", "ライブ配信",
-                            "스트리밍", "최초 공개",
-                            "已直播", "已串流直播", "首播", "已結束直播"
-                        ]):
-                            time_text = t
+                        t_acc = part.get("accessibilityLabel", "")
+                        t_cnt = part.get("text", {}).get("content", "")
+                        for candidate in [t_acc, t_cnt]:
+                            if candidate and any(marker in candidate.lower() for marker in [
+                                "ago", "前", "전", "streamed", "premiered",
+                                "配信済み", "プレミア公開", "ライブ配信",
+                                "스트리밍", "최초 공개",
+                                "已直播", "已串流直播", "首播", "已結束直播"
+                            ]):
+                                time_text = candidate
+                                break
+                        if time_text:
+                            break
+                    if time_text:
+                        break
+
+                img_sources = item.get("contentImage", {}).get("thumbnailViewModel", {}).get("image", {}).get("sources", [])
+                if img_sources:
+                    thumb_url = img_sources[-1].get("url")
+
             elif item_type == "renderer":
                 vid_id = item.get("videoId")
-                title = item.get("title", {}).get("runs", [{}])[0].get("text", "")
-                time_text = item.get("publishedTimeText", {}).get("simpleText", "")
+                title_obj = item.get("title", {})
+                title = title_obj.get("simpleText") or "".join(r.get("text", "") for r in title_obj.get("runs", []))
+                time_obj = item.get("publishedTimeText", {})
+                time_text = time_obj.get("simpleText") or "".join(r.get("text", "") for r in time_obj.get("runs", []))
+                thumb_sources = item.get("thumbnail", {}).get("thumbnails", [])
+                if thumb_sources:
+                    thumb_url = thumb_sources[-1].get("url")
 
             if not vid_id or not title:
                 continue
@@ -436,7 +461,7 @@ def fetch_channel_web_videos(channel_entry: dict[str, Any]) -> list[dict[str, An
                 "category": channel_entry.get("category", "General AI"),
                 "published_iso": pub_dt.isoformat(),
                 "published_display": pub_dt.strftime("%b %d, %Y %H:%M UTC"),
-                "thumbnail_url": f"https://i.ytimg.com/vi/{vid_id}/hqdefault.jpg",
+                "thumbnail_url": thumb_url or f"https://i.ytimg.com/vi/{vid_id}/hqdefault.jpg",
                 "description": ""
             })
 

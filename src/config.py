@@ -53,6 +53,20 @@ def get_gcp_project_id() -> str:
         except Exception:
             pass
 
+    # Query Cloud Run compute metadata server directly
+    if os.getenv("K_SERVICE"):
+        try:
+            req = urllib.request.Request(
+                "http://metadata.google.internal/computeMetadata/v1/project/project-id",
+                headers={"Metadata-Flavor": "Google"}
+            )
+            with urllib.request.urlopen(req, timeout=3) as resp:
+                val = resp.read().decode("utf-8").strip()
+                if val:
+                    return val
+        except Exception:
+            pass
+
     # Attempt resolution via google-auth ADC / Cloud Run metadata service
     try:
         import google.auth
@@ -141,7 +155,7 @@ def resolve_cloud_secret(secret_id: str, project_id: str | None = None) -> str |
             from google.cloud import secretmanager
             client = secretmanager.SecretManagerServiceClient()
             name = f"projects/{target_project}/secrets/{secret_id}/versions/latest"
-            response = client.access_secret_version(request={"name": name}, timeout=5.0)
+            response = client.access_secret_version(request={"name": name}, timeout=12.0)
             val = response.payload.data.decode("utf-8").strip()
             _SECRETS_CACHE[cache_key] = val
             return val
